@@ -12,7 +12,7 @@ jobs:
     env:
       AWS_REGION: us-east-1
       CLUSTER_NAME: terraform-eks-demo
-      TF_VAR_github_repo: your-org/your-repo   # Replace with your repo
+      TF_VAR_github_repo: Consultlawal/PRJ_SC-2025   # Replace with your repo
       TF_VAR_allowed_ref: refs/heads/main
 
     steps:
@@ -93,7 +93,7 @@ jobs:
     - name: Run cluster vulnerability scan
       run: kubectl get vulnerabilities -A || true
 
-      
+
 
 # name: Deploy Hipster Shop with Security
 
