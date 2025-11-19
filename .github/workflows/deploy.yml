@@ -14,10 +14,20 @@ jobs:
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
 
     steps:
+    # ------------------- Checkout Repo -------------------
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # ------------------- Setup -------------------
+    # ------------------- Trivy SAST Scan -------------------
+    - name: Trivy SAST Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'table'
+        severity: 'HIGH,CRITICAL'
+
+    # ------------------- Setup Kubernetes CLI -------------------
     - name: Setup kubectl
       uses: azure/setup-kubectl@v3
       with:
@@ -28,7 +38,7 @@ jobs:
         echo "$KUBE_CONFIG_DATA" | base64 --decode > $HOME/.kube/config
         chmod 600 $HOME/.kube/config
 
-    # ------------------- Deploy Application -------------------
+    # ------------------- Deploy Hipster Shop -------------------
     - name: Deploy Hipster Shop
       run: |
         kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml
@@ -39,10 +49,16 @@ jobs:
         kubectl create namespace kyverno || true
         kubectl apply -f https://raw.githubusercontent.com/kyverno/kyverno/main/config/release/install.yaml
 
+    # ------------------- Install OPA Gatekeeper -------------------
+    - name: Install OPA Gatekeeper
+      run: |
+        kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
+        kubectl -n gatekeeper-system rollout status deployment/gatekeeper-controller-manager
+
     # ------------------- Apply Kyverno Policies -------------------
     - name: Apply Kyverno policies
       run: |
-        echo "Applying all policies in kyverno-policies/"
+        echo "Applying Kyverno policies..."
         kubectl apply -f kyverno-policies/
 
     # ------------------- Install Trivy Operator -------------------
@@ -53,9 +69,8 @@ jobs:
         kubectl create namespace trivy-system || true
         helm install trivy-operator aqua/trivy-operator -n trivy-system
 
-    # ------------------- Run Trivy scan -------------------
+    # ------------------- Run Vulnerability Scan -------------------
     - name: Scan deployed pods with Trivy
       run: |
-        echo "Running vulnerability scan..."
+        echo "Running cluster vulnerability scan..."
         kubectl get vulnerabilities -A || true
-
