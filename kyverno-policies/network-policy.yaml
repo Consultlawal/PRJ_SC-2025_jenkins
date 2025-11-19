@@ -1,0 +1,154 @@
+# Default deny all ingress and egress traffic
+
+# Default deny all traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+
+# Allow Istio pod-to-pod secured mesh traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-sidecar
+  namespace: default
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              istio-injection: enabled
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              istio-injection: enabled
+
+---
+
+# Allow frontend to communicate only with required Hipster Shop services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: productcatalogservice
+        - podSelector:
+            matchLabels:
+              app: cartservice
+        - podSelector:
+            matchLabels:
+              app: checkoutservice
+
+
+
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: default-deny-all
+#   namespace: default
+# spec:
+#   podSelector: {}
+#   policyTypes:
+#     - Ingress
+#     - Egress
+#   ingress: []
+#   egress: []
+
+# ---
+
+# # Allow traffic between Istio sidecars only
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-istio-sidecar
+#   namespace: default
+# spec:
+#   podSelector:
+#     matchLabels:
+#       istio-injection: enabled
+#   policyTypes:
+#     - Ingress
+#     - Egress
+#   ingress:
+#     - from:
+#         - podSelector:
+#             matchLabels:
+#               istio-injection: enabled
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               istio-injection: enabled
+
+# ---
+
+# # Allow frontend to talk to backend and cart services
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-frontend-to-services
+#   namespace: default
+# spec:
+#   podSelector:
+#     matchLabels:
+#       app: frontend
+#   policyTypes:
+#     - Egress
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               app: backend
+#       ports:
+#         - protocol: TCP
+#           port: 80
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               app: cart
+#       ports:
+#         - protocol: TCP
+#           port: 8080
+
+# ---
+
+# # Allow backend to communicate with database
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-backend-to-db
+#   namespace: default
+# spec:
+#   podSelector:
+#     matchLabels:
+#       app: backend
+#   policyTypes:
+#     - Egress
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               app: db
+#       ports:
+#         - protocol: TCP
+#           port: 5432

@@ -1,0 +1,30 @@
+# Ensures proper labeling for tracking and compliance
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: required-labels-policy
+spec:
+  validationFailureAction: enforce
+  rules:
+    - name: require-app-label
+      match:
+        resources:
+          kinds:
+            - Pod
+      validate:
+        message: "All pods must have the label 'app'."
+        pattern:
+          metadata:
+            labels:
+              app: "?*"
+    - name: require-environment-label
+      match:
+        resources:
+          kinds:
+            - Pod
+      validate:
+        message: "All pods must have the label 'environment'."
+        pattern:
+          metadata:
+            labels:
+              environment: "?*"

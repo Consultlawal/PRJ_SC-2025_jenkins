@@ -1,0 +1,20 @@
+# Only allow images from trusted registries (e.g., Docker Hub, GCP Artifact Registry).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: validate-registry
+      match:
+        resources:
+          kinds:
+            - Pod
+      validate:
+        message: "Only images from Docker Hub, GCR, or GHCR are allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "docker.io/* | gcr.io/* | ghcr.io/*"
