@@ -6,10 +6,10 @@ terraform {
   required_version = ">= 1.2.0"
 
   backend "s3" {
-    bucket         = "prj-sc-2025-terraform-state" # <--- EXACTLY MATCH THE BUCKET NAME CREATED ABOVE
+    bucket         = "prj-tf-state-dev" # <--- EXACTLY MATCH THE BUCKET NAME CREATED ABOVE
     key            = "eks/terraform.tfstate"
     region         = "us-east-1" # <--- YOUR AWS REGION
-    dynamodb_table = "prj-sc-2025-terraform-locks" # <--- EXACTLY MATCH THE DYNAMODB TABLE NAME CREATED ABOVE
+    dynamodb_table = "prj-tf-locks" # <--- EXACTLY MATCH THE DYNAMODB TABLE NAME CREATED ABOVE
     encrypt        = true
   }
 
