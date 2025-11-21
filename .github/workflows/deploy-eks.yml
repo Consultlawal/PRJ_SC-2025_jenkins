@@ -70,12 +70,13 @@ jobs:
         id: fetch_arns
         working-directory: ./terraform
         run: |
-          # The -raw flag is crucial for clean variable assignment
           ALB_ARN=$(terraform output -raw alb_controller_role_arn)
           DNS_ARN=$(terraform output -raw external_dns_role_arn)
+          AUTOSCALER_ARN=$(terraform output -raw autoscaler_iam_role_arn) # <--- NEW LINE
           
           echo "ALB_CONTROLLER_ARN=$ALB_ARN" >> $GITHUB_ENV
           echo "EXTERNAL_DNS_ARN=$DNS_ARN" >> $GITHUB_ENV
+          echo "CLUSTER_AUTOSCALER_ARN=$AUTOSCALER_ARN" >> $GITHUB_ENV
         
         # NOTE: This step assumes you have added 'alb_controller_role_arn' and 
         # 'external_dns_role_arn' outputs to your terraform/outputs.tf file.
@@ -116,7 +117,24 @@ jobs:
             --set registry=txt \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ env.EXTERNAL_DNS_ARN }}" \
             --namespace external-dns --create-namespace --wait
-
+      - name: Install Cluster Autoscaler
+        # This uses the ARN fetched in Step 3
+        if: ${{ env.CLUSTER_AUTOSCALER_ARN != '' }}
+        run: |
+          helm repo add autoscaler https://kubernetes.github.io/autoscaler
+          helm repo update
+          
+          # Install using the EKS Helm Chart, pointing it to the IRSA role
+          helm upgrade --install cluster-autoscaler autoscaler/cluster-autoscaler \
+            --namespace kube-system \
+            --set 'autoDiscovery.clusterName'=${{ env.CLUSTER_NAME }} \
+            --set rbac.create=true \
+            --set serviceAccount.create=true \
+            --set 'serviceAccount.annotations.eks\.amazonaws\.com/role-arn'="${{ env.CLUSTER_AUTOSCALER_ARN }}" \
+            --set awsRegion=${{ env.AWS_REGION }} \
+            --wait
+          
+          echo "Cluster Autoscaler installation complete."
       # =======================================================
       # 6. DEPLOY SECURITY MESH COMPONENTS (Policy, Runtime, Audit, Monitoring)
       # =======================================================
@@ -236,7 +254,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-          
+
       # 9. (Optional) Terraform Destroy - Only if you want to clean up automatically
       #    Highly recommended to keep this OFF for main branch in a production setup
       #    or put it in a separate manual workflow (e.g., destroy-eks.yml)

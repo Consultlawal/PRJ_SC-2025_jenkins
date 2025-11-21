@@ -32,6 +32,8 @@ resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterAutoscalerPolicy"
 }
 
+// --- Outputs ---
 output "autoscaler_iam_role_arn" {
-  value = aws_iam_role.autoscaler.arn
+  description = "The ARN of the IAM role for the Cluster Autoscaler."
+  value       = aws_iam_role.cluster_autoscaler.arn // <-- FIXED NAME HERE
 }
