@@ -4,8 +4,8 @@
 # Defines the permissions required to modify Route 53 records.
 data "aws_iam_policy_document" "external_dns_policy" {
   statement {
-    effect    = "Allow"
-    actions   = [
+    effect  = "Allow"
+    actions = [
       "route53:ChangeResourceRecordSets",
       "route53:ListResourceRecordSets",
       "route53:ListHostedZones"
@@ -17,8 +17,8 @@ data "aws_iam_policy_document" "external_dns_policy" {
 
 resource "aws_iam_policy" "external_dns" {
   # Variable used for naming
-  name        = "${var.cluster_name}-ExternalDNS-Policy"
-  policy      = data.aws_iam_policy_document.external_dns_policy.json
+  name   = "${var.cluster_name}-ExternalDNS-Policy"
+  policy = data.aws_iam_policy_document.external_dns_policy.json
 }
 
 # 2. Update the Assume Role Policy to target the ExternalDNS Service Account
@@ -26,7 +26,7 @@ data "aws_iam_policy_document" "external_dns_assume_role_sa" {
   statement {
     effect  = "Allow"
     principals {
-      # References the OIDC issuer fetched from the EKS cluster in the previous file
+      # References the OIDC issuer fetched from the EKS cluster
       identifiers = [aws_eks_cluster.demo.identity[0].oidc[0].issuer]
       type        = "Federated"
     }
@@ -40,6 +40,7 @@ data "aws_iam_policy_document" "external_dns_assume_role_sa" {
   }
 }
 
+# 3. IAM Role for ExternalDNS Service Account (Merged block with depends_on)
 resource "aws_iam_role" "external_dns" {
   name               = "${var.cluster_name}-ExternalDNS-Role"
   assume_role_policy = data.aws_iam_policy_document.external_dns_assume_role_sa.json
@@ -48,13 +49,6 @@ resource "aws_iam_role" "external_dns" {
   depends_on = [
     aws_eks_cluster.demo
   ]
-}
-
-# 3. IAM Role for ExternalDNS Service Account
-resource "aws_iam_role" "external_dns" {
-  # Variable used for naming
-  name               = "${var.cluster_name}-ExternalDNS-Role"
-  assume_role_policy = data.aws_iam_policy_document.external_dns_assume_role_sa.json
 }
 
 # 4. Attach ExternalDNS Policy to Role
