@@ -5,6 +5,14 @@
 #  * Internet Gateway
 #  * Route Table
 #
+// In terraform/vpc.tf (add this data block)
+
+data "aws_availability_zones" "available" {
+  # This fetches all available AZs in the current region
+  state = "available"
+}
+
+// The rest of your vpc.tf file uses this data source
 
 resource "aws_vpc" "demo" {
   cidr_block = "10.0.0.0/16"
@@ -18,7 +26,7 @@ resource "aws_vpc" "demo" {
 }
 
 resource "aws_subnet" "demo" {
-  count = 2
+  count = 3 # Create 3 subnets in 3 different AZs
 
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   cidr_block              = "10.0.${count.index}.0/24"
