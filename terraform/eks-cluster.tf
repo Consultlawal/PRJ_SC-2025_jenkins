@@ -1,25 +1,9 @@
 #
 # EKS Cluster Resources
-#  * IAM Role to allow EKS service to manage other AWS services
-#  * EC2 Security Group to allow networking traffic with EKS cluster
-#  * EKS Cluster
+#  * IAM Role to allow EKS service to manage other AWS services
+#  * EC2 Security Group to allow networking traffic with EKS cluster
+#  * EKS Cluster
 #
-
-// Get the security group ID created for the EKS worker nodes by the node group
-data "aws_security_group" "node_group_sg" {
-  filter {
-    name   = "tag:kubernetes.io/cluster/${var.cluster_name}"
-    values = ["owned"]
-  }
-  filter {
-    name   = "tag:eks:cluster-name"
-    values = [var.cluster_name]
-  }
-  filter {
-    name   = "tag:eks:nodegroup"
-    values = ["demo"]
-  }
-}
 
 resource "aws_iam_role" "demo-cluster" {
   name = "terraform-eks-demo-cluster"
@@ -77,20 +61,24 @@ resource "aws_security_group_rule" "demo-cluster-ingress-workstation-https" {
   type              = "ingress"
 }
 
-// CRITICAL FIX: Allow the worker nodes (Node Group SG) to talk to the
-// EKS Control Plane (Cluster SG) on HTTPS (443).
-resource "aws_security_group_rule" "allow_node_to_cluster" {
-  type                     = "ingress"
-  from_port                = 443
-  to_port                  = 443
-  protocol                 = "tcp"
-  source_security_group_id = data.aws_security_group.node_group_sg.id
-  security_group_id        = aws_security_group.demo-cluster.id
-  description              = "Allow worker nodes to talk to EKS control plane"
+# ----------------------------------------------------------------------
+# CRITICAL FIX for NodeCreationFailure
+# This rule allows all traffic from the entire VPC CIDR to the EKS 
+# Control Plane on port 443, which resolves the dependency issue by 
+# guaranteeing connectivity for newly launched worker nodes.
+# ----------------------------------------------------------------------
+resource "aws_security_group_rule" "temp_cluster_ingress_443_from_vpc" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = [aws_vpc.demo.cidr_block]
+  security_group_id = aws_security_group.demo-cluster.id
+  description       = "FIX: Allow EKS nodes (from VPC CIDR) to talk to the Control Plane on 443."
 }
 
 resource "aws_eks_cluster" "demo" {
-  name     = var.cluster-name
+  name     = var.cluster_name
   role_arn = aws_iam_role.demo-cluster.arn
 
   vpc_config {
@@ -101,5 +89,7 @@ resource "aws_eks_cluster" "demo" {
   depends_on = [
     aws_iam_role_policy_attachment.demo-cluster-AmazonEKSClusterPolicy,
     aws_iam_role_policy_attachment.demo-cluster-AmazonEKSServicePolicy,
+    # Adding the SG rule here ensures it exists before the cluster is active
+    aws_security_group_rule.temp_cluster_ingress_443_from_vpc
   ]
 }
