@@ -1,43 +1,47 @@
-// In terraform/autoscaler-irsa.tf
+# --- Cluster Autoscaler IRSA Resources ---
 
+# 1. IAM Policy Document for Cluster Autoscaler
+# Defines the permissions required by the Cluster Autoscaler to manage EC2 instances
+data "aws_iam_policy_document" "autoscaler_policy" {
+  statement {
+    effect    = "Allow"
+    actions   = [
+      "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:DescribeAutoScalingInstances",
+      "autoscaling:DescribeLaunchConfigurations",
+      "autoscaling:DescribeTags",
+      "autoscaling:SetDesiredCapacity",
+      "autoscaling:TerminateInstanceInAutoScalingGroup",
+      "ec2:DescribeLaunchTemplateVersions"
+    ]
+    resources = ["*"]
+  }
+}
 
-// 1. Policy Document for the Cluster Autoscaler Service Account (SA)
+resource "aws_iam_policy" "cluster_autoscaler" {
+  name   = "${var.cluster_name}-ClusterAutoscaler-Policy"
+  policy = data.aws_iam_policy_document.autoscaler_policy.json
+}
+
+# 2. Update the Assume Role Policy to target the Cluster Autoscaler Service Account
 data "aws_iam_policy_document" "autoscaler_assume" {
   statement {
     effect  = "Allow"
     principals {
-      // Reference the OIDC issuer from the EKS cluster data
       identifiers = [aws_eks_cluster.demo.identity[0].oidc[0].issuer]
       type        = "Federated"
     }
     actions = ["sts:AssumeRoleWithWebIdentity"]
     condition {
       test     = "StringEquals"
-      // Service Account name for the Cluster Autoscaler (namespace:kube-system, name:cluster-autoscaler)
+      # The Service Account name for Cluster Autoscaler will be 'cluster-autoscaler'
       variable = "${replace(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://", "")}:sub"
       values   = ["system:serviceaccount:kube-system:cluster-autoscaler"]
     }
   }
 }
 
-// 2. Cluster Autoscaler IAM Role
-resource "aws_iam_role" "cluster_autoscaler" {
-  name               = "${var.cluster_name}-ClusterAutoscaler-Role"
-  assume_role_policy = data.aws_iam_policy_document.autoscaler_assume.json
-}
-
-// 3. Attach AWS Managed Policy (The standard EKS policy for the autoscaler)
-resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
-  role       = aws_iam_role.cluster_autoscaler.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterAutoscalerPolicy"
-}
-
-// --- Outputs ---
-output "autoscaler_iam_role_arn" {
-  description = "The ARN of the IAM role for the Cluster Autoscaler."
-  value       = aws_iam_role.cluster_autoscaler.arn // <-- FIXED NAME HERE
-}
-
+# 3. IAM Role for Cluster Autoscaler Service Account (Merged block with depends_on)
 resource "aws_iam_role" "cluster_autoscaler" {
   name               = "${var.cluster_name}-ClusterAutoscaler-Role"
   assume_role_policy = data.aws_iam_policy_document.autoscaler_assume.json
@@ -46,4 +50,16 @@ resource "aws_iam_role" "cluster_autoscaler" {
   depends_on = [
     aws_eks_cluster.demo
   ]
+}
+
+# 4. Attach Cluster Autoscaler Policy to Role
+resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
+  role       = aws_iam_role.cluster_autoscaler.name
+  policy_arn = aws_iam_policy.cluster_autoscaler.arn
+}
+
+# --- OUTPUTS (Crucial for the GitHub Actions Workflow) ---
+output "autoscaler_iam_role_arn" {
+  description = "ARN of the IAM role for the Cluster Autoscaler."
+  value       = aws_iam_role.cluster_autoscaler.arn
 }
