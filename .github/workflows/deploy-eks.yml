@@ -45,6 +45,13 @@ jobs:
         with:
           version: 'v3.12.0'
 
+      - name: Setup Istioctl CLI
+        run: |
+          # Download and install istioctl
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+          export PATH="$PWD/istio-1.20.0/bin:$PATH"
+          echo "$PWD/istio-1.20.0/bin" >> $GITHUB_PATH
+
       - name: Create Reports Directory
         run: mkdir -p ${{ env.REPORTS_DIR }}
 
@@ -70,10 +77,9 @@ jobs:
           fi
 
       # -------------------------------------------------------------------
-      # 2.1. FIRST APPLY: Provision the Cluster and Node Group
-      # We target only these resources to force the OIDC provider creation first.
+      # 2.1. FIRST APPLY: Provision the Cluster and OIDC Provider (OIDC Fix)
       # -------------------------------------------------------------------
-      - name: Terraform Apply (Cluster and Node Group)
+      - name: Terraform Apply (Cluster and OIDC Provider)
         id: tf_apply_cluster
         working-directory: ./terraform
         run: terraform apply -target=aws_eks_cluster.demo -target=aws_iam_openid_connect_provider.demo -auto-approve
@@ -82,8 +88,7 @@ jobs:
           TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
           
       # -------------------------------------------------------------------
-      # 2.2. MANDATORY WAIT: CRITICAL FIX for OIDC MalformedPolicyDocument
-      # This delay allows the EKS-created OIDC provider to fully register in IAM.
+      # 2.2. MANDATORY WAIT: CRITICAL FIX for OIDC Propagation
       # -------------------------------------------------------------------
       - name: Wait for EKS OIDC Provider to Propagate
         run: |
@@ -91,8 +96,7 @@ jobs:
           sleep 120
           
       # -------------------------------------------------------------------
-      # 2.3. SECOND APPLY: Apply Remaining Resources (IRSA Roles, etc.)
-      # Running a full apply now will create the IRSA roles successfully.
+      # 2.3. SECOND APPLY: Apply Remaining Resources (IRSA Roles, Node Group, etc.)
       # -------------------------------------------------------------------
       - name: Terraform Apply (IRSA and Remaining Resources)
         id: tf_apply_irsa_and_rest
@@ -103,7 +107,7 @@ jobs:
           TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
           
       # =======================================================
-      # 3. FETCH TERRAFORM OUTPUTS (Required for Helm/IRSA setup)
+      # 3. FETCH TERRAFORM OUTPUTS
       # =======================================================
       - name: Fetch IRSA Role ARNs
         id: fetch_arns
@@ -117,9 +121,6 @@ jobs:
           echo "EXTERNAL_DNS_ARN=$DNS_ARN" >> $GITHUB_ENV
           echo "CLUSTER_AUTOSCALER_ARN=$AUTOSCALER_ARN" >> $GITHUB_ENV
         
-        # NOTE: This step assumes you have added 'alb_controller_role_arn', 'external_dns_role_arn', and
-        # 'autoscaler_iam_role_arn' outputs to your terraform/outputs.tf file.
-
       # =======================================================
       # 4. PREPARE KUBERNETES CONTEXT
       # =======================================================
@@ -156,14 +157,13 @@ jobs:
             --set registry=txt \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ env.EXTERNAL_DNS_ARN }}" \
             --namespace external-dns --create-namespace --wait
+            
       - name: Install Cluster Autoscaler
-        # This uses the ARN fetched in Step 3
         if: ${{ env.CLUSTER_AUTOSCALER_ARN != '' }}
         run: |
           helm repo add autoscaler https://kubernetes.github.io/autoscaler
           helm repo update
           
-          # Install using the EKS Helm Chart, pointing it to the IRSA role
           helm upgrade --install cluster-autoscaler autoscaler/cluster-autoscaler \
             --namespace kube-system \
             --set 'autoDiscovery.clusterName'=${{ env.CLUSTER_NAME }} \
@@ -176,7 +176,7 @@ jobs:
           echo "Cluster Autoscaler installation complete."
           
       # =======================================================
-      # 6. DEPLOY SECURITY MESH COMPONENTS (Policy, Runtime, Audit, Monitoring)
+      # 6. DEPLOY SECURITY MESH COMPONENTS
       # =======================================================
       - name: Install Kyverno (Policy Engine)
         run: |
@@ -204,10 +204,15 @@ jobs:
 
       - name: Install Trivy Operator (Vulnerability Scanner)
         run: |
-          helm repo add aqua https://aquasecurity.github.io/helm-charts/
+          helm repo add aqua https://aquasecurity.github.io/helm-charts
           helm repo update
           helm upgrade --install trivy-operator aqua/trivy-operator -n trivy-system --create-namespace --wait
           echo "Trivy Operator installation complete."
+          
+      - name: Install Istio Service Mesh (Demo Profile)
+        run: |
+          istioctl install --set profile=demo -y
+          echo "Istio Service Mesh installed with the demo profile."
 
       - name: Install Prometheus and Grafana (Monitoring Stack)
         run: |
@@ -224,18 +229,20 @@ jobs:
       # =======================================================
       # 7. DEPLOY APPLICATION (Hipster Shop & Route 53 Ingress)
       # =======================================================
-      # Note: The deployment is done here, and it will be subject to the security policies above.
       - name: Deploy Hipster Shop and Ingress
         run: |
           kubectl create ns hipster-shop || true
           
+          # CRITICAL: Label the namespace to enable Istio sidecar injection
+          kubectl label namespace hipster-shop istio-injection=enabled --overwrite
+          
           # Deploy the core application
           kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml -n hipster-shop
           
-          # Deploy the Ingress resource for Route 53 (using the new ALB Controller)
+          # Deploy the Ingress resource
           kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
           
-          echo "Hipster Shop and Ingress deployed. Waiting for ALB to provision..."
+          echo "Hipster Shop and Ingress deployed. Waiting for readiness..."
           kubectl wait --for=condition=Ready pod -l app=frontend -n hipster-shop --timeout=5m || true
 
       # =======================================================
@@ -244,12 +251,11 @@ jobs:
       - name: Audit Calico Network Policies
         run: |
           echo "[+] Exporting Calico Network Policies..."
-          kubectl get networkpolicies -A -o json > ${{ env.REPORTS_DIR }}/calico-networkpolicies.json
+          kubectl get networkpolicies -A -o json > ${{ env.REPORTS_DIR }}/calico-networkpolicies.json || true
         
       - name: Audit Istio Security Configurations
         run: |
           echo "[+] Exporting Istio Security Configurations..."
-          # Fetch all Istio CRDs relevant to security
           kubectl get peerauthentication -A -o json > ${{ env.REPORTS_DIR }}/istio-peerauth.json || true
           kubectl get authorizationpolicy -A -o json > ${{ env.REPORTS_DIR }}/istio-authz.json || true
           
@@ -266,7 +272,6 @@ jobs:
       - name: Fetch Falco Alerts
         run: |
           echo "[+] Fetching Falco runtime security alerts..."
-          # Tries to get logs from any running Falco pod
           kubectl logs -l app.kubernetes.io/name=falco -n falco --tail=1000 > ${{ env.REPORTS_DIR }}/falco-alerts.log || true
           echo "[+] Falco alerts exported."
 
@@ -295,13 +300,25 @@ jobs:
           if-no-files-found: ignore
 
 
-      # 9. (Optional) Terraform Destroy - Only if you want to clean up automatically
-      #    Highly recommended to keep this OFF for main branch in a production setup
-      #    or put it in a separate manual workflow (e.g., destroy-eks.yml)
-      # - name: Terraform Destroy
-      #   if: always() # Run even if previous steps fail
-      #   working-directory: ./terraform
-      #   run: terraform destroy -auto-approve
-      #   env:
-      #     TF_VAR_region: ${{ env.AWS_REGION }}
-      #     TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
+      # =======================================================
+      # 10. CLEANUP (Terraform Destroy)
+      # =======================================================
+      - name: Terraform Destroy
+        # Use if: always() to ensure cleanup runs even if deployment or audit steps fail.
+        # Remove the 'if:' line or change it to a custom condition if you want more control.
+        if: always() 
+        working-directory: ./terraform
+        run: |
+          # The cluster needs to be fully cleaned up for a complete destroy.
+          # We force Istio to uninstall first to avoid orphaned resources.
+          istioctl uninstall -y || true
+
+          # NOTE: Uncomment the line below to enable auto-destruction of your AWS resources.
+          # Highly recommended to keep this commented out for the 'main' branch in production.
+          # terraform destroy -auto-approve
+          
+          # For now, we will print the plan for safety:
+          terraform plan -destroy
+        env:
+          TF_VAR_region: ${{ env.AWS_REGION }}
+          TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
