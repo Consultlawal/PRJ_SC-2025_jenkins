@@ -88,12 +88,43 @@ jobs:
           TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
           
       # -------------------------------------------------------------------
-      # 2.2. MANDATORY WAIT: CRITICAL FIX for OIDC Propagation
+      # 2.2. MANDATORY WAIT AND VALIDATION: CRITICAL FIX for OIDC
+      # This step explicitly waits for the EKS OIDC Provider to be ACTIVE in IAM.
       # -------------------------------------------------------------------
-      - name: Wait for EKS OIDC Provider to Propagate
+      - name: Wait for EKS OIDC Provider to Become Active in IAM
         run: |
-          echo "Waiting 120 seconds for EKS OIDC Provider to register in IAM..."
-          sleep 120
+          echo "Fetching EKS Cluster OIDC Issuer URL..."
+          OIDC_ISSUER_URL=$(aws eks describe-cluster --name ${{ env.CLUSTER_NAME }} --query "cluster.identity.oidc.issuer" --output text)
+          echo "EKS OIDC Issuer URL: $OIDC_ISSUER_URL"
+
+          # Extract the hostname part of the URL (e.g., oidc.eks.us-east-1.amazonaws.com/id/...)
+          OIDC_HOSTNAME=$(echo "$OIDC_ISSUER_URL" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+          echo "EKS OIDC Hostname for IAM check: $OIDC_HOSTNAME"
+
+          echo "Waiting for OIDC Identity Provider to become active in IAM..."
+          for i in $(seq 1 30); do # Try for 30 iterations (up to 5 minutes)
+            OIDC_PROVIDER_STATUS=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?contains(Arn, '$OIDC_HOSTNAME')].Arn" --output text)
+            
+            if [ -n "$OIDC_PROVIDER_STATUS" ]; then
+              echo "OIDC Identity Provider found in IAM: $OIDC_PROVIDER_STATUS"
+              # Double-check it's fully propagated by trying to fetch its thumbprint (implies active)
+              THUMBPRINT=$(aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_PROVIDER_STATUS" --query "OpenIDConnectProviderList[0].ThumbprintList[0]" --output text 2>/dev/null)
+              if [ -n "$THUMBPRINT" ]; then
+                echo "OIDC Identity Provider is active and fully propagated (Thumbprint: $THUMBPRINT)."
+                break
+              else
+                echo "OIDC Provider found but thumbprint not yet available. Waiting..."
+              fi
+            else
+              echo "OIDC Identity Provider not yet found in IAM. Waiting... ($i/30)"
+            fi
+            sleep 10 # Wait 10 seconds between checks
+          done
+
+          if [ -z "$OIDC_PROVIDER_STATUS" ]; then
+            echo "Error: OIDC Identity Provider did not become active in IAM within the expected time."
+            exit 1
+          fi
           
       # -------------------------------------------------------------------
       # 2.3. SECOND APPLY: Apply Remaining Resources (IRSA Roles, Node Group, etc.)
@@ -304,21 +335,32 @@ jobs:
       # 10. CLEANUP (Terraform Destroy)
       # =======================================================
       - name: Terraform Destroy
-        # Use if: always() to ensure cleanup runs even if deployment or audit steps fail.
-        # Remove the 'if:' line or change it to a custom condition if you want more control.
         if: always() 
         working-directory: ./terraform
         run: |
-          # The cluster needs to be fully cleaned up for a complete destroy.
-          # We force Istio to uninstall first to avoid orphaned resources.
           istioctl uninstall -y || true
-
           # NOTE: Uncomment the line below to enable auto-destruction of your AWS resources.
-          # Highly recommended to keep this commented out for the 'main' branch in production.
           # terraform destroy -auto-approve
-          
-          # For now, we will print the plan for safety:
           terraform plan -destroy
         env:
           TF_VAR_region: ${{ env.AWS_REGION }}
           TF_VAR_cluster_name: ${{ env.CLUSTER_NAME }}
+
+# ```http://googleusercontent.com/image_generation_content/0
+
+
+# Please do the following:
+
+# 1.  **Go to your GitHub repository.**
+# 2.  **Click on "Actions."**
+# 3.  **Select the latest workflow run.**
+# 4.  **Click on the "deploy" job.**
+# 5.  **Expand all the steps** (especially steps 2.1, 2.2, and 2.3) and **copy the entire log output as plain text.** Do not provide another screenshot if the text is garbled.
+
+# **Specifically, I need to see the output of:**
+
+# * **"2.1. FIRST APPLY: Provision the Cluster and OIDC Provider (OIDC Fix)"**: Did this succeed?
+# * **"2.2. MANDATORY WAIT AND VALIDATION: CRITICAL FIX for OIDC"**: Did this step output "OIDC Identity Provider is active and fully propagated" and complete successfully without `exit 1`?
+# * **"2.3. SECOND APPLY: Apply Remaining Resources (IRSA Roles, Node Group, etc.)"**: This is where we expect the IRSA role creation to finally succeed or clearly show a *new* error.
+
+# Once I have the full, plain text logs, we can pinpoint exactly why the OIDC error is still occurring or if a new problem has emerged.
