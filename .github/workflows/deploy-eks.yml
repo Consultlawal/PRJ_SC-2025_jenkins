@@ -91,38 +91,44 @@ jobs:
       # 2.2. MANDATORY WAIT AND VALIDATION: CRITICAL FIX for OIDC
       # This step explicitly waits for the EKS OIDC Provider to be ACTIVE in IAM.
       # -------------------------------------------------------------------
-      - name: Wait for EKS OIDC Provider to Become Active in IAM
+      # -------------------------------------------------------------------
+      # 2.2. DIAGNOSE AND WAIT: Validate EKS OIDC Provider in IAM
+      # This step explicitly fetches the OIDC issuer from Terraform output
+      # and then waits for the provider to become active in IAM.
+      # -------------------------------------------------------------------
+      - name: Diagnose and Wait for EKS OIDC Provider to Become Active in IAM
+        id: oidc_validation
+        working-directory: ./terraform
         run: |
-          echo "Fetching EKS Cluster OIDC Issuer URL..."
-          OIDC_ISSUER_URL=$(aws eks describe-cluster --name ${{ env.CLUSTER_NAME }} --query "cluster.identity.oidc.issuer" --output text)
-          echo "EKS OIDC Issuer URL: $OIDC_ISSUER_URL"
+          echo "Retrieving OIDC Issuer URL and ARN from Terraform outputs..."
+          OIDC_ISSUER_URL=$(terraform output -raw eks_oidc_issuer_url)
+          OIDC_PROVIDER_ARN=$(terraform output -raw eks_oidc_provider_arn)
 
-          # Extract the hostname part of the URL (e.g., oidc.eks.us-east-1.amazonaws.com/id/...)
-          OIDC_HOSTNAME=$(echo "$OIDC_ISSUER_URL" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
-          echo "EKS OIDC Hostname for IAM check: $OIDC_HOSTNAME"
+          if [ -z "$OIDC_ISSUER_URL" ] || [ -z "$OIDC_PROVIDER_ARN" ]; then
+            echo "Error: Terraform did not output EKS OIDC Issuer URL or Provider ARN. OIDC provider might not have been created."
+            exit 1
+          fi
 
-          echo "Waiting for OIDC Identity Provider to become active in IAM..."
+          echo "EKS OIDC Issuer URL from Terraform: $OIDC_ISSUER_URL"
+          echo "EKS OIDC Provider ARN from Terraform: $OIDC_PROVIDER_ARN"
+
+          echo "Waiting for OIDC Identity Provider to become active in IAM using ARN..."
           for i in $(seq 1 30); do # Try for 30 iterations (up to 5 minutes)
-            OIDC_PROVIDER_STATUS=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?contains(Arn, '$OIDC_HOSTNAME')].Arn" --output text)
+            # Check if the OIDC provider exists and is queryable
+            IAM_CHECK_OUTPUT=$(aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_PROVIDER_ARN" --query "Url" --output text 2>/dev/null)
             
-            if [ -n "$OIDC_PROVIDER_STATUS" ]; then
-              echo "OIDC Identity Provider found in IAM: $OIDC_PROVIDER_STATUS"
-              # Double-check it's fully propagated by trying to fetch its thumbprint (implies active)
-              THUMBPRINT=$(aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_PROVIDER_STATUS" --query "OpenIDConnectProviderList[0].ThumbprintList[0]" --output text 2>/dev/null)
-              if [ -n "$THUMBPRINT" ]; then
-                echo "OIDC Identity Provider is active and fully propagated (Thumbprint: $THUMBPRINT)."
-                break
-              else
-                echo "OIDC Provider found but thumbprint not yet available. Waiting..."
-              fi
+            if [ -n "$IAM_CHECK_OUTPUT" ]; then
+              echo "OIDC Identity Provider found in IAM and URL is '$IAM_CHECK_OUTPUT'."
+              echo "OIDC provider is active and fully propagated."
+              break
             else
-              echo "OIDC Identity Provider not yet found in IAM. Waiting... ($i/30)"
+              echo "OIDC Identity Provider not yet found/active in IAM or API call failed. Waiting... ($i/30)"
             fi
             sleep 10 # Wait 10 seconds between checks
           done
 
-          if [ -z "$OIDC_PROVIDER_STATUS" ]; then
-            echo "Error: OIDC Identity Provider did not become active in IAM within the expected time."
+          if [ -z "$IAM_CHECK_OUTPUT" ]; then
+            echo "Error: OIDC Identity Provider did not become active in IAM within the expected time ($OIDC_PROVIDER_ARN)."
             exit 1
           fi
           

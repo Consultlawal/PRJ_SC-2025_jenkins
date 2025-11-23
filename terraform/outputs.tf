@@ -58,3 +58,15 @@ output "kubeconfig" {
 output "subnet_public" {
   value = aws_subnet.demo[0].map_public_ip_on_launch
 }
+
+# terraform/outputs.tf
+
+output "eks_oidc_issuer_url" {
+  description = "The URL of the EKS cluster's OIDC Identity provider."
+  value       = aws_eks_cluster.demo.identity[0].oidc[0].issuer
+}
+
+output "eks_oidc_provider_arn" {
+  description = "The ARN of the EKS cluster's OIDC Identity provider."
+  value       = aws_iam_openid_connect_provider.demo.arn
+}
