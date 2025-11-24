@@ -320,7 +320,7 @@ resource "aws_eks_cluster" "demo" {
 # Get the TLS certificate fingerprint for the EKS OIDC issuer.
 # This must explicitly depend on the OIDC issuer URL being available from the cluster.
 data "tls_certificate" "oidc" {
-  url = "token.actions.githubusercontent.com"
+  url = aws_eks_cluster.demo.identity[0].oidc[0].issuer
   # Explicit dependency to ensure the cluster's OIDC issuer is fully formed.
   # Terraform implicitly handles this for attribute references but explicit can help.
   depends_on = [aws_eks_cluster.demo]
@@ -329,14 +329,12 @@ data "tls_certificate" "oidc" {
 # Create the IAM OIDC provider for EKS (so IRSA roles can reference its ARN).
 # This is crucial for the IRSA roles to assume their service accounts.
 resource "aws_iam_openid_connect_provider" "demo" {
-  url = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github_actions_oidc.certificates[0].sha1_fingerprint]
-  # This depends_on ensures the cluster is fully up and the TLS certificate data is fetched.
-  # This is the key to preventing "MalformedPolicyDocument" for IRSA roles.
-  tags = {
-    Name        = "github-actions-oidc-provider"
-    ManagedBy   = "Terraform"
-    Purpose     = "GitHub Actions OIDC Authentication"
-  }
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.oidc.certificates[0].sha1_fingerprint] # <--- CORRECT THUMBPRINT for EKS OIDC
+  url             = aws_eks_cluster.demo.identity[0].oidc[0].issuer
+
+  depends_on = [
+    aws_eks_cluster.demo,
+    data.tls_certificate.oidc # Explicitly depend on the data source being resolved
+  ]
 }

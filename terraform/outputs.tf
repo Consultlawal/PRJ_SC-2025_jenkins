@@ -109,3 +109,10 @@ output "github_actions_oidc_provider_arn" {
   description = "The ARN of the AWS IAM OIDC Provider for GitHub Actions."
   value       = aws_iam_openid_connect_provider.github_actions.arn
 }
+
+# ./terraform/outputs.tf (add this to your existing outputs)
+
+output "github_actions_oidc_provider_arn" {
+  description = "The ARN of the AWS IAM OIDC Provider for GitHub Actions."
+  value       = aws_iam_openid_connect_provider.github_actions.arn
+}
