@@ -41,8 +41,3 @@ resource "aws_iam_role_policy_attachment" "alb_controller_attach_managed" {
   policy_arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
 }
 
-# --- OUTPUTS (Crucial for the GitHub Actions Workflow) ---
-output "alb_controller_role_arn" {
-  description = "ARN of the IAM role for the AWS Load Balancer Controller."
-  value       = aws_iam_role.alb_controller.arn
-}

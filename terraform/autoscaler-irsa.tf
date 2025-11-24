@@ -59,8 +59,3 @@ resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
   policy_arn = aws_iam_policy.cluster_autoscaler.arn
 }
 
-# --- OUTPUTS (Crucial for the GitHub Actions Workflow) ---
-output "autoscaler_iam_role_arn" {
-  description = "ARN of the IAM role for the Cluster Autoscaler."
-  value       = aws_iam_role.cluster_autoscaler.arn
-}

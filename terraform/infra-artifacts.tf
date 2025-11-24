@@ -79,10 +79,3 @@ resource "aws_iam_user_policy" "github_actions_s3" {
   })
 }
 
-output "ci_artifacts_bucket" {
-  value = aws_s3_bucket.ci_artifacts.bucket
-}
-
-output "github_actions_user_access_key_create" {
-  value = "Create access key in console for user ${aws_iam_user.github_actions_user.name} and store as GitHub secret if you don't use OIDC"
-}

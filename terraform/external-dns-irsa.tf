@@ -58,8 +58,3 @@ resource "aws_iam_role_policy_attachment" "external_dns" {
   policy_arn = aws_iam_policy.external_dns.arn
 }
 
-# --- OUTPUTS (Crucial for the GitHub Actions Workflow) ---
-output "external_dns_role_arn" {
-  description = "ARN of the IAM role for ExternalDNS."
-  value       = aws_iam_role.external_dns.arn
-}
