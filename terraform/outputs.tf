@@ -101,3 +101,11 @@ output "github_actions_user_access_key_create" {
   description = "Instruction for IAM user access key (if not using OIDC)."
   value       = "Create access key in console for user ${aws_iam_user.github_actions_user.name} and store as GitHub secret if you don't use OIDC"
 }
+
+# Output the ARN of the GitHub Actions OIDC provider.
+# This ARN is required when configuring the trust policy for the IAM role
+# that your GitHub Actions workflow will assume.
+output "github_actions_oidc_provider_arn" {
+  description = "The ARN of the AWS IAM OIDC Provider for GitHub Actions."
+  value       = aws_iam_openid_connect_provider.github_actions.arn
+}

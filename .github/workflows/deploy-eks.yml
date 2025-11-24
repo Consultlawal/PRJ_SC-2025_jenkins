@@ -162,7 +162,9 @@ jobs:
       # 4. PREPARE KUBERNETES CONTEXT
       # =======================================================
       - name: Update Kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+        run: |
+          mkdir -p $HOME/.kube/ # <--- ADD THIS LINE HERE
+          aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
 
       # =======================================================
       # 5. SETUP NETWORKING & ACCESS (ALB and ExternalDNS)
