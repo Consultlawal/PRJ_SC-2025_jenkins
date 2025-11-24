@@ -26,18 +26,17 @@ resource "aws_s3_bucket_versioning" "ci_artifacts_versioning" {
 }
 
 # Use the dedicated resource for lifecycle configuration
+# infra-artifacts.tf
 resource "aws_s3_bucket_lifecycle_configuration" "ci_artifacts_lifecycle" {
   bucket = aws_s3_bucket.ci_artifacts.id
   rule {
     id     = "expire-old-artifacts"
     status = "Enabled"
+    # Added filter block
+    filter {} # This applies the rule to all objects in the bucket
     expiration {
       days = 365
     }
-    # If you have non-current versions due to versioning, you might also want to manage them:
-    # noncurrent_version_expiration {
-    #   noncurrent_days = 90
-    # }
   }
 }
 

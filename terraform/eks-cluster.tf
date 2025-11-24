@@ -104,7 +104,7 @@ resource "aws_iam_openid_connect_provider" "demo" {
 
 # This data source is required to get the OIDC provider's thumbprint
 data "tls_certificate" "oidc" {
-  url = trimprefix(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://")
+  url = aws_eks_cluster.demo.identity[0].oidc[0].issuer
 }
 
 # NEW: Data source to explicitly reference the OIDC provider created by EKS
