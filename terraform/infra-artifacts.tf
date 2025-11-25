@@ -41,40 +41,4 @@ resource "aws_s3_bucket_lifecycle_configuration" "ci_artifacts_lifecycle" {
 }
 
 
-# optional IAM user for CI (if not using OIDC)
-# Given you are setting up OIDC for EKS, you should ideally use OIDC for your CI/CD as well,
-# rather than a long-lived IAM user with access keys.
-# I'm keeping this as-is, but note it's less secure than OIDC.
-resource "aws_iam_user" "github_actions_user" {
-  name = "${var.cluster_name}-gh-actions" # Changed var.cluster-name to var.cluster_name for consistency
-  path = "/ci/"
-}
-
-resource "aws_iam_user_policy" "github_actions_s3" {
-  name = "gh-actions-s3-upload"
-  user = aws_iam_user.github_actions_user.name
-
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Action = [
-          "s3:PutObject",
-          "s3:PutObjectAcl",
-          "s3:GetObject",
-          "s3:ListBucket",
-          # For versioning, you might need additional permissions for listing/deleting specific versions
-          "s3:ListBucketVersions",
-          "s3:DeleteObject",
-          "s3:DeleteObjectVersion"
-        ],
-        Resource = [
-          aws_s3_bucket.ci_artifacts.arn,
-          "${aws_s3_bucket.ci_artifacts.arn}/*"
-        ]
-      }
-    ]
-  })
-}
-
+# 

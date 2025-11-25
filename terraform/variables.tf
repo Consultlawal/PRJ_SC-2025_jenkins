@@ -20,3 +20,9 @@ variable "cluster_name" {
   type        = string
   default     = "terraform-eks-demo" # Matches the CLUSTER_NAME in your YAML
 }
+variable "vpc_id" {}
+variable "public_subnet_id" {}
+variable "keypair" {}
+variable "jenkins_ami_id" {
+  description = "Amazon Linux 2 AMI"
+}
