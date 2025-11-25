@@ -192,9 +192,9 @@ output "ci_artifacts_bucket" {
   value = aws_s3_bucket.ci_artifacts.bucket
 }
 
-output "github_actions_user_access_key_create" {
-  value = "Create access key in console for user ${aws_iam_user.github_actions_user.name} if you don't use OIDC"
-}
+# output "github_actions_user_access_key_create" {
+#   value = "Create access key in console for user ${aws_iam_user.github_actions_user.name} if you don't use OIDC"
+# }
 
 output "github_actions_oidc_provider_arn" {
   value = aws_iam_openid_connect_provider.github_actions.arn
