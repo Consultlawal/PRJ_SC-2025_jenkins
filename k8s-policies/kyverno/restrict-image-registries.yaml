@@ -16,6 +16,7 @@ spec:
           namespaces:
             - falco
             - trivy-system
+            - istio-system
       validate:
         message: "Only images from Docker Hub, GCR, or GHCR are allowed."
         pattern:

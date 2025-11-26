@@ -33,6 +33,7 @@ spec:
           namespaces:
             - falco
             - trivy-system
+            - istio-system
       validate:
         message: "All pods must have the label 'environment'."
         pattern:

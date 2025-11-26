@@ -18,6 +18,7 @@ spec:
             namespaces:
               - falco
               - trivy-system
+              - istio-system
       validate:
         message: "Privileged containers are not allowed."
         pattern:

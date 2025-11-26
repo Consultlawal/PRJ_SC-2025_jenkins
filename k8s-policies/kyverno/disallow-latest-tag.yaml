@@ -17,6 +17,7 @@ spec:
           namespaces:
             - falco
             - trivy-system
+            - istio-system
       validate:
         message: "Using the 'latest' tag is not allowed."
         pattern:
