@@ -12,6 +12,10 @@ spec:
         resources:
           kinds:
             - Pod
+      exclude: # <--- ADD THIS BLOCK
+        resources:
+          namespaces:
+            - falco
       validate:
         message: "CPU and memory limits must be set for all containers"
         pattern:
