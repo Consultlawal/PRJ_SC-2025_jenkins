@@ -155,15 +155,14 @@ jobs:
             --set falco.resources.limits.memory="512Mi" \
             --set falco.resources.requests.cpu="200m" \
             --set falco.resources.requests.memory="256Mi" \
-            # --- REVISED LINES FOR FALCO EXPORTER RESOURCES ---
-            --set falco.falcoExporter.resources.limits.cpu="100m" \
-            --set falco.falcoExporter.resources.limits.memory="128Mi" \
-            --set falco.falcoExporter.resources.requests.cpu="50m" \
-            --set falco.falcoExporter.resources.requests.memory="64Mi" \
-            # --- REVISED LINES FOR LABELS ---
+            # --- REMOVE THESE LINES since we are excluding the namespace from this policy ---
+            # --set falco.falcoExporter.resources.limits.cpu="100m" \
+            # --set falco.falcoExporter.resources.limits.memory="128Mi" \
+            # --set falco.falcoExporter.resources.requests.cpu="50m" \
+            # --set falco.falcoExporter.resources.requests.memory="64Mi" \
+            # --- END REMOVED LINES ---
             --set daemonset.podLabels.app="falco" \
             --set daemonset.podLabels.environment="production" \
-            # --- END REVISED LINES ---
             --set tty=true \
             --set tags.audits=false \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}"

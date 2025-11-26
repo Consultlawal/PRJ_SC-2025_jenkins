@@ -32,7 +32,11 @@ spec:
         resources:
           kinds:
             - Pod
-      # NO EXCLUDE HERE - Falco will be configured with limits in Helm chart
+      exclude: # <--- ADD THIS EXCLUDE BLOCK
+        resources:
+          namespaces:
+            - falco
+      
       validate:
         message: "Containers must have CPU and memory limits."
         pattern:
