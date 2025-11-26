@@ -15,3 +15,10 @@ variable "eks_node_instance_type" {
 variable "region" {
   default = "us-east-1"
 }
+
+variable "github_org" {
+  default = "Consultlawal"
+}
+variable "github_repo" {
+  default = "PRJ_SC-2025_jenkins"
+}

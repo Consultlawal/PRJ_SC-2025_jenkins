@@ -22,7 +22,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ github.event.inputs.aws_region || 'us-east-1' }} # Fallback if not from workflow_dispatch
-  CLUSTER_NAME: ${{ github.event.inputs.cluster_name || 'prj-sc-2025-eks' }} # Fallback if not from workflow_dispatch
+  CLUSTER_NAME: ${{ github.event.inputs.cluster_name || 'terraform-eks-demo' }} # Fallback if not from workflow_dispatch
   REPORTS_DIR: security-reports # Directory for storing all reports
 
 jobs:
@@ -41,8 +41,10 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           # THIS IS CRITICAL: The ARN of the IAM Role for GitHub Actions
-          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          # role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          # aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::009593259890:role/github-actions-terraform-role
+          aws-region: us-east-1
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
