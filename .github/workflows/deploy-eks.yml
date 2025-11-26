@@ -147,17 +147,6 @@ jobs:
             echo "::warning:: k8s-policies/kyverno/ directory not found. Skipping Kyverno policy application."
           fi
 
-      # ... (other steps above) ...
-
-      - name: Download and Inspect Falco Helm Chart
-        run: |
-          helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update # <--- ADD THIS LINE
-          helm pull falcosecurity/falco --untar --version 1.15.0 # Ensure this is the correct version you're using
-          echo "--- Falco Chart values.yaml ---"
-          cat falco/values.yaml
-          echo "--- End Falco Chart values.yaml ---"
-          # cat falco/templates/falco-policy.yaml # Optional, for further inspection
-
       - name: Install Falco (Runtime Security Engine)
         run: |
           helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
@@ -166,15 +155,18 @@ jobs:
             --set falco.resources.limits.memory="512Mi" \
             --set falco.resources.requests.cpu="200m" \
             --set falco.resources.requests.memory="256Mi" \
+            # --- REVISED LINES FOR FALCO EXPORTER RESOURCES ---
             --set falco.falcoExporter.resources.limits.cpu="100m" \
             --set falco.falcoExporter.resources.limits.memory="128Mi" \
             --set falco.falcoExporter.resources.requests.cpu="50m" \
             --set falco.falcoExporter.resources.requests.memory="64Mi" \
+            # --- REVISED LINES FOR LABELS ---
+            --set daemonset.podLabels.app="falco" \
+            --set daemonset.podLabels.environment="production" \
+            # --- END REVISED LINES ---
             --set tty=true \
             --set tags.audits=false \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}" \
-            --set podLabels.app="falco" \
-            --set podLabels.environment="production"
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}"
           echo "Falco installation complete."
 
       - name: Install Trivy Operator (Vulnerability Scanner)
