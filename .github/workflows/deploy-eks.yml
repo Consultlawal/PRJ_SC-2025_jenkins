@@ -94,11 +94,17 @@ jobs:
       # =======================================================
       # 4. DEPLOY SECURITY MESH COMPONENTS (AND OPTIONAL CORE ADDONS)
       # =======================================================
+      - name: Uninstall previous deployments (Cleanup)
+        run: |
+          helm uninstall falco -n falco || true
+          helm uninstall kyverno -n kyverno || true
+          # Wait a moment for resources to be deleted
+          sleep 30
       - name: Install Kyverno (Policy Engine)
         run: |
           helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
           helm upgrade --install kyverno kyverno/kyverno -n kyverno --create-namespace --wait --atomic
-          --timeout=10m0s  # <--- ADD THIS LINE
+          --timeout=15m0s  # <--- ADD THIS LINE
           echo "Kyverno installation complete."
 
       - name: Apply Kyverno Policies
