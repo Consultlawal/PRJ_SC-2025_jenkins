@@ -17,6 +17,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "All resources must have 'app' and 'env' labels."
         pattern:

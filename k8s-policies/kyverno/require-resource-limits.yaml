@@ -17,6 +17,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "CPU and memory limits must be set for all containers."
         pattern:

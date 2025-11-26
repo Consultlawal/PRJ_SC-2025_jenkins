@@ -17,6 +17,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "All pods must have the label 'app'."
         pattern:
@@ -35,6 +36,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "All pods must have the label 'environment'."
         pattern:

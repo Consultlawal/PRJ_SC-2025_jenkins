@@ -17,6 +17,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "Privileged containers are not allowed."
         pattern:
@@ -36,6 +37,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "Containers must have CPU and memory limits."
         pattern:
@@ -57,6 +59,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "Containers must not run as root."
         pattern:

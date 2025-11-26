@@ -19,6 +19,7 @@ spec:
               - falco
               - trivy-system
               - istio-system
+              - monitoring
       validate:
         message: "Privileged containers are not allowed."
         pattern:

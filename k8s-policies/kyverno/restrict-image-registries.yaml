@@ -17,6 +17,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "Only images from Docker Hub, GCR, or GHCR are allowed."
         pattern:

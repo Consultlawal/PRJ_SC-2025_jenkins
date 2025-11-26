@@ -18,6 +18,7 @@ spec:
             - falco
             - trivy-system
             - istio-system
+            - monitoring
       validate:
         message: "Using the 'latest' tag is not allowed."
         pattern:
