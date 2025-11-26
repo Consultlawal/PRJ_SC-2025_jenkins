@@ -120,8 +120,6 @@ jobs:
             podLabels:
               app: falco
               environment: production
-            updateStrategy:
-              type: RollingUpdate
 
           resources:
             limits:
@@ -134,19 +132,24 @@ jobs:
           driver:
             enabled: true
             loader:
-              initContainer: true
-              resources:
-                limits:
-                  cpu: 200m
-                  memory: 256Mi
-                requests:
-                  cpu: 100m
-                  memory: 128Mi
+              initContainer:
+                enabled: true
+                image:
+                  registry: docker.io
+                  repository: falcosecurity/falco-driver-loader
+                  tag: latest
+                  pullPolicy: IfNotPresent
+                resources:
+                  limits:
+                    cpu: 200m
+                    memory: 256Mi
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
 
           falcoctl:
             artifact:
               install:
-                enabled: true
                 resources:
                   limits:
                     cpu: 200m
