@@ -279,7 +279,7 @@ jobs:
             echo "::warning:: No AuthorizationPolicy resources found. Skipping Istio AuthorizationPolicy audit."
           fi
 
-      - name: Run kube-bench (CIS Benchmark)
+        - name: Run kube-bench (CIS Benchmark)
         run: |
           echo "[+] Running kube-bench CIS Benchmark scan inside the cluster..."
           kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
@@ -306,6 +306,20 @@ jobs:
           fi
           echo "--- End Kube-bench Diagnostics ---"
           # --- END DIAGNOSTIC STEPS ---
+
+          echo "Waiting for kube-bench job to complete (max 10 minutes)..."
+          kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
+
+          KUBE_BENCH_POD=$(kubectl get pods -l app=kube-bench -n kube-system -o jsonpath='{.items[0].metadata.name}' || true)
+          if [ -n "$KUBE_BENCH_POD" ]; then
+            echo "Fetching logs from kube-bench pod: $KUBE_BENCH_POD"
+            kubectl logs "$KUBE_BENCH_POD" -n kube-system > ${{ env.REPORTS_DIR }}/kube-bench-report.txt
+            echo "Deleting kube-bench job..."
+            kubectl delete -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
+            echo "[+] kube-bench report saved and job cleaned up."
+          else
+            echo "::warning:: Kube-bench pod not found. Skipping report collection and cleanup."
+          fi
 
           echo "Waiting for kube-bench job to complete (max 10 minutes)..."
           kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
