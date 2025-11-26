@@ -113,7 +113,8 @@ jobs:
 
       - name: Create Falco values file
         run: |
-          cat <<EOF > falco-values.yaml
+          mkdir -p falco/
+          cat <<EOF > falco/falco-values.yaml
           daemonset:
             podLabels:
               app: falco
