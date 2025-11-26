@@ -1,0 +1,256 @@
+name: Deploy App & Security Mesh to Existing EKS
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+    inputs:
+      cluster_name:
+        description: 'Name of the existing EKS cluster'
+        required: true
+        default: 'terraform-eks-demo' # Set your default EKS cluster name here
+      aws_region:
+        description: 'AWS Region where the EKS cluster exists'
+        required: true
+        default: 'us-east-1' # Set your default AWS region here
+  push:
+    branches:
+      - main # Triggers on push to the main branch
+
+permissions:
+  id-token: write # Required for OIDC authentication with AWS
+  contents: read # Allows checkout of the repository content
+  security-events: write # Allows uploading SARIF security reports if you integrate later
+
+env:
+  AWS_REGION: ${{ github.event.inputs.aws_region || 'us-east-1' }} # Fallback if not from workflow_dispatch
+  CLUSTER_NAME: ${{ github.event.inputs.cluster_name || 'prj-sc-2025-eks' }} # Fallback if not from workflow_dispatch
+  REPORTS_DIR: security-reports # Directory for storing all reports
+
+jobs:
+  deploy_app_and_security:
+    name: Deploy Application and Security Mesh
+    runs-on: ubuntu-latest # Uses the latest Ubuntu GitHub-hosted runner
+
+    steps:
+      # =======================================================
+      # 1. SETUP & AUTHENTICATION
+      # =======================================================
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # THIS IS CRITICAL: The ARN of the IAM Role for GitHub Actions
+          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.29.0'
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Setup Istioctl CLI
+        run: |
+          echo "Setting up istioctl version 1.20.0..."
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+          echo "$PWD/istio-1.20.0/bin" >> $GITHUB_PATH
+          istioctl version --remote=false
+          echo "Istioctl setup complete."
+
+      - name: Create Reports Directory
+        run: mkdir -p ${{ env.REPORTS_DIR }}
+
+      # =======================================================
+      # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS)
+      # =======================================================
+      - name: Update Kubeconfig
+        run: |
+          mkdir -p $HOME/.kube/
+          aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+          echo "Kubeconfig updated for cluster ${{ env.CLUSTER_NAME }}."
+          kubectl get nodes # Verify kubectl can connect to your EKS cluster
+
+      # =======================================================
+      # 3. DEPLOY SECURITY MESH COMPONENTS (AND OPTIONAL CORE ADDONS)
+      # =======================================================    
+      - name: Install Kyverno (Policy Engine)
+        run: |
+          helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
+          helm upgrade --install kyverno kyverno/kyverno -n kyverno --create-namespace --wait --atomic
+          echo "Kyverno installation complete."
+
+      - name: Apply Kyverno Policies
+        run: |
+          if [ -d "k8s-policies/kyverno" ]; then
+            echo "Applying Kyverno policies from k8s-policies/kyverno/"
+            kubectl apply -f k8s-policies/kyverno/
+            sleep 10
+            echo "Kyverno policies applied."
+          else
+            echo "::warning:: k8s-policies/kyverno/ directory not found. Skipping Kyverno policy application."
+          fi
+
+      - name: Install Falco (Runtime Security Engine)
+        run: |
+          helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
+          helm upgrade --install falco falcosecurity/falco -n falco --create-namespace --wait --atomic
+          echo "Falco installation complete."
+
+      - name: Install Trivy Operator (Vulnerability Scanner)
+        run: |
+          helm repo add aqua https://aquasecurity.github.io/helm-charts --force-update
+          helm upgrade --install trivy-operator aqua/trivy-operator -n trivy-system --create-namespace --wait --atomic
+          echo "Trivy Operator installation complete."
+
+      - name: Install Istio Service Mesh (Demo Profile)
+        run: |
+          istioctl install --set profile=demo -y
+          echo "Istio Service Mesh installed with the demo profile."
+
+      - name: Install Prometheus and Grafana (Monitoring Stack)
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+          helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+            --version 47.6.0 \
+            --namespace monitoring --create-namespace \
+            -f k8s-policies/monitoring/monitoring-values.yaml --wait --atomic
+          echo "Prometheus and Grafana installation complete."
+
+      # =======================================================
+      # 4. DEPLOY APPLICATION (Hipster Shop & Route 53 Ingress)
+      # =======================================================
+      - name: Deploy Hipster Shop and Ingress
+        run: |
+          kubectl create ns hipster-shop --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace hipster-shop istio-injection=enabled --overwrite
+          echo "Namespace 'hipster-shop' created and Istio injection enabled."
+
+          echo "Deploying Hipster Shop application..."
+          kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml -n hipster-shop
+          echo "Hipster Shop application manifests applied."
+
+          echo "Deploying Hipster Shop Ingress..."
+          kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
+          echo "Hipster Shop Ingress applied."
+
+          echo "Waiting for Hipster Shop frontend to be ready (max 5 minutes)..."
+          kubectl wait --for=condition=Available deployment/frontend -n hipster-shop --timeout=5m
+          echo "Hipster Shop frontend deployment is ready."
+
+      # =======================================================
+      # 5. RUN SECURITY AUDITS & REPORTING
+      # =======================================================
+      - name: Audit Calico Network Policies
+        run: |
+          echo "[+] Exporting Calico Network Policies..."
+          if kubectl get networkpolicies -A &>/dev/null; then
+            kubectl get networkpolicies -A -o json > ${{ env.REPORTS_DIR }}/calico-networkpolicies.json
+          else
+            echo "::warning:: No network policies found or Calico not installed. Skipping Calico Network Policies audit."
+          fi
+
+      - name: Audit Istio Security Configurations
+        run: |
+          echo "[+] Exporting Istio Security Configurations..."
+          if kubectl get peerauthentication -A &>/dev/null; then
+            kubectl get peerauthentication -A -o json > ${{ env.REPORTS_DIR }}/istio-peerauth.json
+          else
+            echo "::warning:: No PeerAuthentication resources found. Skipping Istio PeerAuthentication audit."
+          fi
+          if kubectl get authorizationpolicy -A &>/dev/null; then
+            kubectl get authorizationpolicy -A -o json > ${{ env.REPORTS_DIR }}/istio-authz.json
+          else
+            echo "::warning:: No AuthorizationPolicy resources found. Skipping Istio AuthorizationPolicy audit."
+          fi
+
+      - name: Run kube-bench (CIS Benchmark)
+        run: |
+          echo "[+] Running kube-bench CIS Benchmark scan inside the cluster..."
+          kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
+          echo "Waiting for kube-bench job to complete (max 10 minutes)..."
+          kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
+
+          KUBE_BENCH_POD=$(kubectl get pods -l app=kube-bench -n kube-system -o jsonpath='{.items[0].metadata.name}' || true)
+          if [ -n "$KUBE_BENCH_POD" ]; then
+            echo "Fetching logs from kube-bench pod: $KUBE_BENCH_POD"
+            kubectl logs "$KUBE_BENCH_POD" -n kube-system > ${{ env.REPORTS_DIR }}/kube-bench-report.txt
+            echo "Deleting kube-bench job..."
+            kubectl delete -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
+            echo "[+] kube-bench report saved and job cleaned up."
+          else
+            echo "::warning:: Kube-bench pod not found. Skipping report collection and cleanup."
+          fi
+
+      - name: Fetch Falco Alerts
+        run: |
+          echo "[+] Fetching Falco runtime security alerts..."
+          if kubectl get pods -l app.kubernetes.io/name=falco -n falco &>/dev/null; then
+            kubectl logs -l app.kubernetes.io/name=falco -n falco --all-containers --since=1h > ${{ env.REPORTS_DIR }}/falco-alerts.log || true
+            echo "[+] Falco alerts exported."
+          else
+            echo "::warning:: No Falco pods found in 'falco' namespace. Skipping Falco alerts export."
+          fi
+
+      - name: Check Trivy Operator Vulnerability Reports
+        run: |
+          echo "[+] Checking Trivy Operator vulnerability reports..."
+          if kubectl get vulnerabilityreports -A &>/dev/null; then
+            kubectl get vulnerabilityreports -A -o yaml > ${{ env.REPORTS_DIR }}/trivy-operator-vulnerabilityreports.yaml
+          else
+            echo "::warning:: No vulnerabilityreports found. Skipping Trivy Operator vulnerability reports export."
+          fi
+          if kubectl get configauditreports -A &>/dev/null; then
+            kubectl get configauditreports -A -o yaml > ${{ env.REPORTS_DIR }}/trivy-operator-configauditreports.yaml
+          else
+            echo "::warning:: No configauditreports found. Skipping Trivy Operator config audit reports export."
+          fi
+          echo "[+] Trivy Operator reports exported."
+
+      - name: Check Kyverno Policy Reports
+        run: |
+          echo "[+] Checking Kyverno policy reports..."
+          if kubectl get policyreports -A &>/dev/null; then
+            kubectl get policyreports -A -o yaml > ${{ env.REPORTS_DIR }}/kyverno-policyreports.yaml
+          else
+            echo "::warning:: No policyreports found. Skipping Kyverno policy reports export."
+          fi
+          echo "[+] Kyverno policy reports exported."
+
+      # =======================================================
+      # 6. UPLOAD REPORTS AS ARTIFACTS
+      # =======================================================
+      - name: Upload Security Reports Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ github.run_id }}
+          path: ${{ env.REPORTS_DIR }}/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # =======================================================
+      # 7. CLEANUP (Optional - Uninstall App & Security Components)
+      # =======================================================
+      # - name: Cleanup Kubernetes Resources
+      #   if: false # Change to 'true' to enable this cleanup step for testing or a dedicated destroy workflow
+      #   run: |
+      #     echo "Starting Kubernetes resource cleanup..."
+      #     helm uninstall kube-prometheus-stack -n monitoring --wait || true
+      #     helm uninstall trivy-operator -n trivy-system --wait || true
+      #     helm uninstall falco -n falco --wait || true
+      #     helm uninstall kyverno -n kyverno --wait || true
+      #     helm uninstall cluster-autoscaler -n kube-system --wait || true
+      #     helm uninstall external-dns -n external-dns --wait || true
+      #     helm uninstall aws-load-balancer-controller -n kube-system --wait || true
+      #     istioctl uninstall --purge -y || true
+      #     kubectl delete ns hipster-shop --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns external-dns --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns falco --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns kyverno --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns monitoring --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns trivy-system --ignore-not-found --timeout=5m || true
+      #     echo "Kubernetes components uninstalled."
