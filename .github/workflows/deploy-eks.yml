@@ -147,7 +147,17 @@ jobs:
             echo "::warning:: k8s-policies/kyverno/ directory not found. Skipping Kyverno policy application."
           fi
 
-      - name: Install Falco (Runtime Security Engine)
+      # ... (other steps above) ...
+
+      - name: Download and Inspect Falco Helm Chart # <--- ADD THIS STEP HERE
+        run: |
+          helm pull falcosecurity/falco --untar --version 1.15.0 # Ensure this is the correct version you're using
+          echo "--- Falco Chart values.yaml ---"
+          cat falco/values.yaml
+          echo "--- End Falco Chart values.yaml ---"
+          # cat falco/templates/falco-policy.yaml # Optional, for further inspection
+
+      - name: Install Falco (Runtime Security Engine) # <--- Keep your existing install step below
         run: |
           helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
           helm upgrade --install falco falcosecurity/falco -n falco --create-namespace --wait --atomic \
@@ -167,6 +177,7 @@ jobs:
             --set podLabels.app="falco" \
             --set podLabels.environment="production"
           echo "Falco installation complete."
+
       - name: Install Trivy Operator (Vulnerability Scanner)
         run: |
           helm repo add aqua https://aquasecurity.github.io/helm-charts --force-update
