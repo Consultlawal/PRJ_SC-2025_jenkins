@@ -111,16 +111,18 @@ jobs:
             echo "::warning:: k8s-policies/kyverno/ directory not found. Skipping Kyverno policy application."
           fi
 
+      # ------------------ CREATE VALUES FILE ------------------
       - name: Create Falco values file
         run: |
           mkdir -p falco/
-          cat <<EOF > falco/falco-values.yaml
+          cat <<'EOF' > falco/falco-values.yaml
           daemonset:
             podLabels:
               app: falco
               environment: production
+            updateStrategy:
+              type: RollingUpdate
 
-          # Main Falco container
           resources:
             limits:
               cpu: 500m
@@ -129,9 +131,10 @@ jobs:
               cpu: 200m
               memory: 256Mi
 
-          # Driver Loader container
           driver:
+            enabled: true
             loader:
+              initContainer: true
               resources:
                 limits:
                   cpu: 200m
@@ -140,10 +143,10 @@ jobs:
                   cpu: 100m
                   memory: 128Mi
 
-          # falcoctl container (artifact updater)
           falcoctl:
             artifact:
               install:
+                enabled: true
                 resources:
                   limits:
                     cpu: 200m
@@ -152,7 +155,6 @@ jobs:
                     cpu: 100m
                     memory: 128Mi
 
-          # Exporter container (if enabled)
           falcoExporter:
             enabled: true
             resources:
@@ -165,6 +167,7 @@ jobs:
           EOF
           echo "Falco values file created."
 
+      # ------------------ INSTALL FALCO ------------------
       - name: Install Falco (Runtime Security Engine)
         run: |
           helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
@@ -174,35 +177,37 @@ jobs:
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}"
           echo "Falco installation complete."
 
+      # ------------------ DIAGNOSTICS (keep this step) ------------------
       - name: Diagnose Falco Installation Failure
-        if: failure() # This step will only run if the previous step (Falco install) failed
+        if: failure()
         run: |
           echo "--- Falco Installation Diagnostics ---"
+
           echo "Current context:"
           kubectl config current-context
 
-          echo "Getting Falco namespace status:"
+          echo "Falco namespace:"
           kubectl get namespace falco || true
 
-          echo "Getting Falco DaemonSet status:"
+          echo "Falco DaemonSet:"
           kubectl get daemonset -n falco falco || true
           kubectl describe daemonset -n falco falco || true
 
-          echo "Getting Falco Pods status:"
+          echo "Falco Pods:"
           kubectl get pods -n falco -o wide || true
           kubectl describe pods -l app.kubernetes.io/name=falco -n falco || true
 
-          echo "Fetching Falco Pod Logs (first pod):"
-          FALCO_POD=$(kubectl get pods -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-          if [ -n "$FALCO_POD" ]; then
-            kubectl logs "$FALCO_POD" -n falco --all-containers || true
-          else
-            echo "No Falco pods found to fetch logs from."
+          echo "Falco pod logs:"
+          P=$(kubectl get pods -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$P" ]; then
+            kubectl logs "$P" -n falco --all-containers || true
           fi
 
-          echo "Getting Events in falco namespace:"
+          echo "Namespace events:"
           kubectl get events -n falco --sort-by='.lastTimestamp' || true
-          echo "--- End Falco Diagnostics ---"
+
+          echo "--- END DIAGNOSTICS ---"
+
 
       - name: Install Trivy Operator (Vulnerability Scanner)
         run: |
