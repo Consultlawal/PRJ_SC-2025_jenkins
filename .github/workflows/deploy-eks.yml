@@ -40,9 +40,9 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          
+          # THIS IS CRITICAL: The ARN of the IAM Role for GitHub Actions
+          # role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          # aws-region: ${{ env.AWS_REGION }}
           role-to-assume: arn:aws:iam::009593259890:role/github-actions-terraform-role
           aws-region: us-east-1
 
@@ -90,7 +90,7 @@ jobs:
       - name: Create Reports Directory # This step can be here or earlier
         run: mkdir -p ${{ env.REPORTS_DIR }}
 
-
+        
       # - name: Download Istioctl CLI
       #   run: |
       #     echo "Downloading Istioctl version 1.20.0..."
