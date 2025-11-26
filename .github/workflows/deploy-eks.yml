@@ -150,9 +150,21 @@ jobs:
       - name: Install Falco (Runtime Security Engine)
         run: |
           helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
-          helm upgrade --install falco falcosecurity/falco -n falco --create-namespace --wait --atomic
+          helm upgrade --install falco falcosecurity/falco -n falco --create-namespace --wait --atomic \
+            --set falco.resources.limits.cpu="500m" \
+            --set falco.resources.limits.memory="512Mi" \
+            --set falco.resources.requests.cpu="200m" \
+            --set falco.resources.requests.memory="256Mi" \
+            --set falcoExporter.resources.limits.cpu="100m" \
+            --set falcoExporter.resources.limits.memory="128Mi" \
+            --set falcoExporter.resources.requests.cpu="50m" \
+            --set falcoExporter.resources.requests.memory="64Mi" \
+            --set tty=true \
+            --set tags.audits=false \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}" \
+            --set podLabels.app="falco" \
+            --set podLabels.environment="production"
           echo "Falco installation complete."
-
       - name: Install Trivy Operator (Vulnerability Scanner)
         run: |
           helm repo add aqua https://aquasecurity.github.io/helm-charts --force-update

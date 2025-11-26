@@ -22,3 +22,9 @@ variable "github_org" {
 variable "github_repo" {
   default = "PRJ_SC-2025_jenkins"
 }
+# variables.tf
+variable "environment" {
+  description = "The deployment environment (e.g., dev, staging, prod)"
+  type        = string
+  default     = "development" # You can provide a default value
+}
