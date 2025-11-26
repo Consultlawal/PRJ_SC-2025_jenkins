@@ -279,7 +279,7 @@ jobs:
             echo "::warning:: No AuthorizationPolicy resources found. Skipping Istio AuthorizationPolicy audit."
           fi
 
-        - name: Run kube-bench (CIS Benchmark)
+      - name: Run kube-bench (CIS Benchmark)
         run: |
           echo "[+] Running kube-bench CIS Benchmark scan inside the cluster..."
           kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
