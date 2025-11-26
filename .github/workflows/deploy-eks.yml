@@ -56,17 +56,30 @@ jobs:
         with:
           version: 'v3.12.0'
 
-      - name: Setup Istioctl CLI
+      - name: Download Istioctl CLI
         run: |
-          echo "Setting up istioctl version 1.20.0..."
+          echo "Downloading Istioctl version 1.20.0..."
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+          echo "Download complete."
+
+      - name: Add Istioctl to PATH
+        run: |
           ISTIO_BIN_DIR="${GITHUB_WORKSPACE}/istio-1.20.0/bin"
           echo "$ISTIO_BIN_DIR" >> $GITHUB_PATH
+          echo "Istioctl bin added to PATH: $ISTIO_BIN_DIR"
+
+      - name: Verify Istioctl installation
+        run: |
+          echo "Verifying istioctl..."
           istioctl version --remote=false
-          echo "Istioctl setup complete."
+
+      - name: Run Istio precheck
+        run: |
+          echo "Running Istio pre-installation check..."
+          istioctl x precheck
 
       - name: Create Reports Directory
-        run: mkdir -p ${{ env.REPORTS_DIR }}
+        run: mkdir -p "${{ env.REPORTS_DIR }}"
 
       # =======================================================
       # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS)
