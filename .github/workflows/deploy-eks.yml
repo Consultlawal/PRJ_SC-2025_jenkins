@@ -56,34 +56,8 @@ jobs:
         with:
           version: 'v3.12.0'
 
-      - name: Download Istioctl CLI
-        run: |
-          echo "Downloading Istioctl version 1.20.0..."
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-          echo "Download complete."
-
-      - name: Add Istioctl to PATH
-        run: |
-          ISTIO_BIN_DIR="${GITHUB_WORKSPACE}/istio-1.20.0/bin"
-          echo "$ISTIO_BIN_DIR" >> $GITHUB_PATH
-          echo "Istioctl bin added to PATH: $ISTIO_BIN_DIR"
-
-      - name: Verify Istioctl installation
-        run: |
-          echo "Verifying istioctl..."
-          istioctl version --remote=false
-
-      - name: Run Istio precheck
-        run: |
-          echo "Running Istio pre-installation check..."
-          istioctl x precheck --skip-checks
-
-
-      - name: Create Reports Directory
-        run: mkdir -p "${{ env.REPORTS_DIR }}"
-
       # =======================================================
-      # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS)
+      # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS) - MOVED UP
       # =======================================================
       - name: Update Kubeconfig
         run: |
@@ -91,6 +65,67 @@ jobs:
           aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
           echo "Kubeconfig updated for cluster ${{ env.CLUSTER_NAME }}."
           kubectl get nodes # Verify kubectl can connect to your EKS cluster
+
+      # =======================================================
+      # 3. SETUP ISTIO (Now that Kubeconfig is ready)
+      # =======================================================
+      - name: Setup Istioctl CLI
+        run: |
+          echo "Setting up istioctl version 1.20.0..."
+          ISTIO_INSTALL_OUTPUT=$(curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh - 2>&1)
+          echo "$ISTIO_INSTALL_OUTPUT" # Log the output for visibility
+
+          ISTIO_BIN_DIR="${{ github.workspace }}/istio-1.20.0/bin"
+          export PATH="$PATH:$ISTIO_BIN_DIR" # For current run step
+          echo "$ISTIO_BIN_DIR" >> $GITHUB_PATH # For subsequent steps
+
+          istioctl version --remote=false # This should pass
+          echo "Istioctl setup complete."
+
+          # Now, after Kubeconfig is set AND istioctl is in PATH,
+          # we can run precheck.
+          echo "Running Istio pre-installation check..."
+          istioctl x precheck # This should now succeed
+
+      - name: Create Reports Directory # This step can be here or earlier
+        run: mkdir -p ${{ env.REPORTS_DIR }}
+
+        
+      # - name: Download Istioctl CLI
+      #   run: |
+      #     echo "Downloading Istioctl version 1.20.0..."
+      #     curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+      #     echo "Download complete."
+
+      # - name: Add Istioctl to PATH
+      #   run: |
+      #     ISTIO_BIN_DIR="${GITHUB_WORKSPACE}/istio-1.20.0/bin"
+      #     echo "$ISTIO_BIN_DIR" >> $GITHUB_PATH
+      #     echo "Istioctl bin added to PATH: $ISTIO_BIN_DIR"
+
+      # - name: Verify Istioctl installation
+      #   run: |
+      #     echo "Verifying istioctl..."
+      #     istioctl version --remote=false
+
+      # - name: Run Istio precheck
+      #   run: |
+      #     echo "Running Istio pre-installation check..."
+      #     istioctl x precheck --skip-checks
+
+
+      # - name: Create Reports Directory
+      #   run: mkdir -p "${{ env.REPORTS_DIR }}"
+
+      # # =======================================================
+      # # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS)
+      # # =======================================================
+      # - name: Update Kubeconfig
+      #   run: |
+      #     mkdir -p $HOME/.kube/
+      #     aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+      #     echo "Kubeconfig updated for cluster ${{ env.CLUSTER_NAME }}."
+      #     kubectl get nodes # Verify kubectl can connect to your EKS cluster
 
       # =======================================================
       # 3. DEPLOY SECURITY MESH COMPONENTS (AND OPTIONAL CORE ADDONS)
