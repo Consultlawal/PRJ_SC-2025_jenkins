@@ -12,6 +12,11 @@ spec:
           kinds:
             - Pod
             - Deployment
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
       validate:
         message: "Using the 'latest' tag is not allowed."
         pattern:

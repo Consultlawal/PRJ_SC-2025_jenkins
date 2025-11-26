@@ -1,37 +1,38 @@
-# required-labels-policy.yaml
-# Ensures proper labeling for tracking and compliance
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: required-labels-policy
 spec:
   validationFailureAction: enforce
-  background: true # Ensure background scanning is enabled
+  background: true
   rules:
     - name: require-app-label
       match:
         resources:
           kinds:
             - Pod
-      exclude: # <--- ADD THIS EXCLUDE BLOCK
+      exclude:
         resources:
           namespaces:
             - falco
+            - trivy-system
       validate:
         message: "All pods must have the label 'app'."
         pattern:
           metadata:
             labels:
               app: "?*"
+
     - name: require-environment-label
       match:
         resources:
           kinds:
             - Pod
-      exclude: # <--- ADD THIS EXCLUDE BLOCK
+      exclude:
         resources:
           namespaces:
             - falco
+            - trivy-system
       validate:
         message: "All pods must have the label 'environment'."
         pattern:

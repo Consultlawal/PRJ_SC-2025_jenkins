@@ -1,4 +1,3 @@
-# Ensure CPU and memory limits are defined for all containers.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -12,12 +11,13 @@ spec:
         resources:
           kinds:
             - Pod
-      exclude: # <--- ADD THIS BLOCK
+      exclude:
         resources:
           namespaces:
             - falco
+            - trivy-system
       validate:
-        message: "CPU and memory limits must be set for all containers"
+        message: "CPU and memory limits must be set for all containers."
         pattern:
           spec:
             containers:

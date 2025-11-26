@@ -1,5 +1,3 @@
-# Disallows privileged containers, requires resource limits,
-# and prevents running as root.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -8,16 +6,16 @@ spec:
   validationFailureAction: enforce
   background: true
   rules:
-    # Rule to disallow privileged containers
     - name: disallow-privileged
       match:
         resources:
           kinds:
             - Pod
-      exclude: # <--- ADDED EXCLUDE FOR FALCO
+      exclude:
         resources:
           namespaces:
             - falco
+            - trivy-system
       validate:
         message: "Privileged containers are not allowed."
         pattern:
@@ -26,17 +24,16 @@ spec:
               - securityContext:
                   privileged: false
 
-    # Rule to require resource limits (Falco will be configured to comply)
     - name: require-resource-limits
       match:
         resources:
           kinds:
             - Pod
-      exclude: # <--- ADD THIS EXCLUDE BLOCK
+      exclude:
         resources:
           namespaces:
             - falco
-      
+            - trivy-system
       validate:
         message: "Containers must have CPU and memory limits."
         pattern:
@@ -47,16 +44,16 @@ spec:
                     cpu: "?*"
                     memory: "?*"
 
-    # Rule to prevent running as root user
     - name: prevent-root-user
       match:
         resources:
           kinds:
             - Pod
-      exclude: # <--- ADDED EXCLUDE FOR FALCO
+      exclude:
         resources:
           namespaces:
             - falco
+            - trivy-system
       validate:
         message: "Containers must not run as root."
         pattern:
