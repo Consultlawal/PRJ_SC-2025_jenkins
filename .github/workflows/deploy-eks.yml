@@ -60,7 +60,7 @@ jobs:
         run: |
           echo "Setting up istioctl version 1.20.0..."
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-          ISTIO_BIN_DIR="${{ github.workspace }}/istio-1.20.0/bin"
+          ISTIO_BIN_DIR="${GITHUB_WORKSPACE}/istio-1.20.0/bin"
           echo "$ISTIO_BIN_DIR" >> $GITHUB_PATH
           istioctl version --remote=false
           echo "Istioctl setup complete."
