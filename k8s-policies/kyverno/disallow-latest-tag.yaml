@@ -19,7 +19,6 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
-            - hipster-shop
       validate:
         message: "Using the 'latest' tag is not allowed."
         pattern:

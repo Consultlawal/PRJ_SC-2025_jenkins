@@ -98,6 +98,7 @@ jobs:
         run: |
           helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
           helm upgrade --install kyverno kyverno/kyverno -n kyverno --create-namespace --wait --atomic
+          --timeout=10m0s  # <--- ADD THIS LINE
           echo "Kyverno installation complete."
 
       - name: Apply Kyverno Policies

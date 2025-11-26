@@ -20,7 +20,6 @@ spec:
               - trivy-system
               - istio-system
               - monitoring
-              - hipster-shop
       validate:
         message: "Privileged containers are not allowed."
         pattern:

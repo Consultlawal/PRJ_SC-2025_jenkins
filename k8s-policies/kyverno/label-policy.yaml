@@ -18,7 +18,6 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
-            - hipster-shop
       validate:
         message: "All pods must have the label 'app'."
         pattern:
@@ -38,7 +37,6 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
-            - hipster-shop
       validate:
         message: "All pods must have the label 'environment'."
         pattern:

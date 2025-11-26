@@ -18,7 +18,6 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
-            - hipster-shop
       validate:
         message: "Only images from Docker Hub, GCR, or GHCR are allowed."
         pattern:

@@ -18,7 +18,6 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
-            - hipster-shop
       validate:
         message: "All resources must have 'app' and 'env' labels."
         pattern:

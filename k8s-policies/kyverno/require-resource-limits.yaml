@@ -18,7 +18,6 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
-            - hipster-shop
       validate:
         message: "CPU and memory limits must be set for all containers."
         pattern:
