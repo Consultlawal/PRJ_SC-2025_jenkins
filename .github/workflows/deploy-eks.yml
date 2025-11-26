@@ -120,7 +120,7 @@ jobs:
               app: falco
               environment: production
 
-          # These are the top-level resources for the main Falco container
+          # Main Falco container
           resources:
             limits:
               cpu: 500m
@@ -128,6 +128,8 @@ jobs:
             requests:
               cpu: 200m
               memory: 256Mi
+
+          # Driver Loader container
           driver:
             loader:
               resources:
@@ -137,16 +139,22 @@ jobs:
                 requests:
                   cpu: 100m
                   memory: 128Mi
-          falcoctl:
-            resources:
-              limits:
-                cpu: 200m
-                memory: 256Mi
-              requests:
-                cpu: 100m
-                memory: 128Mi
 
+          # falcoctl container (artifact updater)
+          falcoctl:
+            artifact:
+              install:
+                resources:
+                  limits:
+                    cpu: 200m
+                    memory: 256Mi
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+
+          # Exporter container (if enabled)
           falcoExporter:
+            enabled: true
             resources:
               limits:
                 cpu: 200m
