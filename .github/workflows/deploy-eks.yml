@@ -136,7 +136,7 @@ jobs:
           helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
           helm upgrade --install falco falcosecurity/falco \
             -n falco --create-namespace --wait --atomic \
-            -f falco-values.yaml \
+            -f falco/falco-values.yaml
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}"
           echo "Falco installation complete."
 
