@@ -1,4 +1,4 @@
-name: Deploy App & Security Mesh to Existing EKS
+name: new Deploy App & Security Mesh to Existing EKS
 
 on:
   workflow_dispatch: # Allows manual trigger from GitHub UI
