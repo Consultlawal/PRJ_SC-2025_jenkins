@@ -16,6 +16,7 @@ spec:
           namespaces:
             - falco
             - trivy-system
+            - istio-system
       validate:
         message: "Privileged containers are not allowed."
         pattern:
@@ -55,6 +56,7 @@ spec:
           namespaces:
             - falco
             - trivy-system
+            - istio-system
       validate:
         message: "Containers must not run as root."
         pattern:
