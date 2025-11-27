@@ -126,46 +126,16 @@ jobs:
               --thumbprint-list 9e99a48a9960b14926bb7f3b02e22da0afd50d9b
           fi
 
-      - name: Install ExternalDNS
-        run: |
-          helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
-          helm repo update
 
-          helm upgrade --install external-dns external-dns/external-dns \
-            --set provider=aws \
-            --set txtOwnerId=${{ env.CLUSTER_NAME }} \
-            --set serviceAccount.create=true \
-            --set serviceAccount.name=external-dns \
-            --set policy=sync \
-            --set aws.zoneType=public \
-            --set registry=txt \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ env.EXTERNAL_DNS_ARN }}" \
-            --namespace external-dns --create-namespace --wait
-            
-      - name: Install Cluster Autoscaler
-        if: ${{ env.CLUSTER_AUTOSCALER_ARN != '' }}
-        run: |
-          helm repo add autoscaler https://kubernetes.github.io/autoscaler
-          helm repo update
-          
-          helm upgrade --install cluster-autoscaler autoscaler/cluster-autoscaler \
-            --namespace kube-system \
-            --set 'autoDiscovery.clusterName'=${{ env.CLUSTER_NAME }} \
-            --set rbac.create=true \
-            --set serviceAccount.create=true \
-            --set 'serviceAccount.annotations.eks\.amazonaws\.com/role-arn'="${{ env.CLUSTER_AUTOSCALER_ARN }}" \
-            --set awsRegion=${{ env.AWS_REGION }} \
-            --wait
-          
-          echo "Cluster Autoscaler installation complete.
-      # ---------------------------------------------------------
-      # Install AWS Load Balancer Controller (Helm)
+      # -# Install AWS Load Balancer Controller (Helm) - <<< IMPORTANT: PLACE THIS HERE AND ADD --WAIT
       # ---------------------------------------------------------
       - name: Install AWS Load Balancer Controller
         run: |
           echo "Installing AWS Load Balancer Controller..."
 
-          ALB_ROLE_ARN="arn:aws:iam::009593259890:role/aws-load-balancer-controller-irsa"
+          # Assuming ALB_ROLE_ARN is defined or created by Terraform earlier
+          # Or uncomment the eksctl step above if managing SA in workflow
+          ALB_ROLE_ARN="arn:aws:iam::009593259890:role/aws-load-balancer-controller-irsa" # Verify this ARN is correct
 
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
@@ -183,9 +153,77 @@ jobs:
             --set vpcId=$VPC_ID \
             --set serviceAccount.create=false \
             --set serviceAccount.name=aws-load-balancer-controller \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=$ALB_ROLE_ARN
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=$ALB_ROLE_ARN \
+            --wait # <<< CRITICAL: Add --wait to ensure it's ready before subsequent steps
 
           echo "AWS Load Balancer Controller installed successfully."
+          echo "Giving ALB controller a moment to fully initialize webhooks..."
+          sleep 10 # Optional: Add a small delay for webhook readiness
+      # ---------------------------------------------------------
+      # Install ExternalDNS (Keep this where it is or after ALB Controller)
+      # ---------------------------------------------------------
+      - name: Install ExternalDNS
+        run: |
+          helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+          helm repo update
+
+          helm upgrade --install external-dns external-dns/external-dns \
+            --set provider=aws \
+            --set txtOwnerId=${{ env.CLUSTER_NAME }} \
+            --set serviceAccount.create=true \
+            --set serviceAccount.name=external-dns \
+            --set policy=sync \
+            --set aws.zoneType=public \
+            --set registry=txt \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ env.EXTERNAL_DNS_ARN }}" \
+            --namespace external-dns --create-namespace --wait
+      # ---------------------------------------------------------
+      # Install Cluster Autoscaler (Keep this where it is)
+      # ---------------------------------------------------------     
+      - name: Install Cluster Autoscaler
+        if: ${{ env.CLUSTER_AUTOSCALER_ARN != '' }}
+        run: |
+          helm repo add autoscaler https://kubernetes.github.io/autoscaler
+          helm repo update
+          
+          helm upgrade --install cluster-autoscaler autoscaler/cluster-autoscaler \
+            --namespace kube-system \
+            --set 'autoDiscovery.clusterName'=${{ env.CLUSTER_NAME }} \
+            --set rbac.create=true \
+            --set serviceAccount.create=true \
+            --set 'serviceAccount.annotations.eks\.amazonaws\.com/role-arn'="${{ env.CLUSTER_AUTOSCALER_ARN }}" \
+            --set awsRegion=${{ env.AWS_REGION }} \
+            --wait
+          
+          echo "Cluster Autoscaler installation complete.
+      # # ---------------------------------------------------------
+      # # Install AWS Load Balancer Controller (Helm)
+      # # ---------------------------------------------------------
+      # - name: Install AWS Load Balancer Controller
+      #   run: |
+      #     echo "Installing AWS Load Balancer Controller..."
+
+      #     ALB_ROLE_ARN="arn:aws:iam::009593259890:role/aws-load-balancer-controller-irsa"
+
+      #     helm repo add eks https://aws.github.io/eks-charts
+      #     helm repo update
+
+      #     VPC_ID=$(aws eks describe-cluster \
+      #       --name ${{ env.CLUSTER_NAME }} \
+      #       --region ${{ env.AWS_REGION }} \
+      #       --query "cluster.resourcesVpcConfig.vpcId" \
+      #       --output text)
+
+      #     helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+      #       -n kube-system \
+      #       --set clusterName=${{ env.CLUSTER_NAME }} \
+      #       --set region=${{ env.AWS_REGION }} \
+      #       --set vpcId=$VPC_ID \
+      #       --set serviceAccount.create=false \
+      #       --set serviceAccount.name=aws-load-balancer-controller \
+      #       --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=$ALB_ROLE_ARN
+
+      #     echo "AWS Load Balancer Controller installed successfully."
 
       # =======================================================
       # 3. SETUP ISTIO (Now that Kubeconfig is ready)
