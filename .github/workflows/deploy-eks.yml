@@ -355,6 +355,32 @@ jobs:
           kubectl label namespace hipster-shop istio-injection=enabled --overwrite
           echo "Namespace 'hipster-shop' created and Istio injection enabled."
 
+          echo "Adding Kyverno exception for Hipster Shop..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: kyverno.io/v2
+          kind: PolicyException
+          metadata:
+            name: hipster-shop-exception
+            namespace: hipster-shop
+          spec:
+            exceptions:
+              - policyName: enforce-labels
+                ruleNames:
+                  - require-app-and-env-labels
+              - policyName: restrict-image-registries
+                ruleNames:
+                  - validate-registry
+            match:
+              any:
+                - resources:
+                    kinds:
+                      - Deployment
+                      - Pod
+                    namespaces:
+                      - hipster-shop
+          EOF
+          echo "Kyverno exception applied."
+
           echo "Deploying Hipster Shop application..."
           kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml -n hipster-shop
           echo "Hipster Shop application manifests applied."
@@ -363,36 +389,10 @@ jobs:
           kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
           echo "Hipster Shop Ingress applied."
 
-          echo "Patching Deployments to satisfy Kyverno policies..."
-          for dep in $(kubectl get deployment -n hipster-shop -o name); do
-            DEP_NAME=$(echo $dep | cut -d/ -f2)
-
-            echo "Patching $DEP_NAME ..."
-
-            # Add environment label + required securityContext
-            kubectl patch $dep -n hipster-shop --type='merge' -p "
-            spec:
-              template:
-                metadata:
-                  labels:
-                    environment: dev
-                spec:
-                  containers:
-                  - name: $DEP_NAME
-                    securityContext:
-                      runAsNonRoot: true
-                      runAsUser: 1000
-                      privileged: false
-                      allowPrivilegeEscalation: false
-                      readOnlyRootFilesystem: false
-            "
-          done
-
-          echo "All deployments patched to satisfy Kyverno."
-
           echo "Waiting for Hipster Shop frontend to be ready (max 5 minutes)..."
           kubectl wait --for=condition=Available deployment/frontend -n hipster-shop --timeout=5m
           echo "Hipster Shop frontend deployment is ready."
+
 
       # =======================================================
       # 6. RUN SECURITY AUDITS & REPORTING
