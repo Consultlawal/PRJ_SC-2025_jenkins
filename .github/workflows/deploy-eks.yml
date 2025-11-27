@@ -41,9 +41,6 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           # THIS IS CRITICAL: The ARN of the IAM Role for GitHub Actions
-          # role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }} # <-- Use the secret
-          # aws-region: ${{ env.AWS_REGION }}
-          # The hardcoded ARN below should NOT be used in production.
           role-to-assume: arn:aws:iam::009593259890:role/github-actions-terraform-role
           aws-region: us-east-1
 
@@ -97,9 +94,18 @@ jobs:
       - name: Uninstall previous deployments (Cleanup)
         run: |
           helm uninstall falco -n falco || true
+          helm uninstall trivy-operator -n trivy-system || true # Added trivy-operator for clean slate
           helm uninstall kyverno -n kyverno || true
-          # Wait a moment for resources to be deleted
+          helm uninstall kube-prometheus-stack -n monitoring || true
+          # Add any other large chart uninstalls here if needed later (e.g., Istio)
+          echo "Waiting 30 seconds for resources to terminate..."
           sleep 30
+          # Optionally delete namespaces, but be careful with core ones like kube-system or default
+          # kubectl delete ns falco || true
+          # kubectl delete ns trivy-system || true
+          # kubectl delete ns kyverno || true
+          # kubectl delete ns monitoring || true
+
       - name: Install Kyverno (Policy Engine)
         run: |
           helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
@@ -118,7 +124,7 @@ jobs:
             echo "::warning:: k8s-policies/kyverno/ directory not found. Skipping Kyverno policy application."
           fi
 
-      # ------------------ CREATE VALUES FILE ------------------
+      # ------------------ CREATE FALCO VALUES FILE ------------------
       - name: Create Falco values file
         run: |
           mkdir -p falco/
@@ -184,7 +190,8 @@ jobs:
           helm upgrade --install falco falcosecurity/falco \
             -n falco --create-namespace --wait --atomic \
             -f falco/falco-values.yaml \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}"
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}" \
+            --timeout=10m0s # Added timeout for Falco
           echo "Falco installation complete."
 
       # ------------------ DIAGNOSTICS (keep this step) ------------------
@@ -218,11 +225,11 @@ jobs:
 
           echo "--- END DIAGNOSTICS ---"
 
-
       - name: Install Trivy Operator (Vulnerability Scanner)
         run: |
           helm repo add aqua https://aquasecurity.github.io/helm-charts --force-update
-          helm upgrade --install trivy-operator aqua/trivy-operator -n trivy-system --create-namespace --wait --atomic
+          helm upgrade --install trivy-operator aqua/trivy-operator -n trivy-system --create-namespace --wait --atomic \
+            --timeout=10m0s # Added timeout for Trivy Operator
           echo "Trivy Operator installation complete."
 
       - name: Install Istio Service Mesh (Demo Profile)
@@ -230,20 +237,6 @@ jobs:
           istioctl install --set profile=demo -y
           echo "Istio Service Mesh installed with the demo profile."
 
-      - name: Uninstall previous deployments (Cleanup)
-        run: |
-          helm uninstall falco -n falco || true
-          helm uninstall trivy-operator -n trivy-system || true # Adding trivy-operator for completeness
-          helm uninstall kyverno -n kyverno || true
-          helm uninstall kube-prometheus-stack -n monitoring || true # <--- ADD THIS LINE
-          # Add any other large chart uninstalls here if needed later (e.g., Istio)
-          echo "Waiting 30 seconds for resources to terminate..."
-          sleep 30
-          # Optionally delete namespaces, but be careful with core ones like kube-system or default
-          # kubectl delete ns falco || true
-          # kubectl delete ns trivy-system || true
-          # kubectl delete ns kyverno || true
-          # kubectl delete ns monitoring || true
       - name: Install Prometheus and Grafana (Monitoring Stack)
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
@@ -254,7 +247,7 @@ jobs:
             -f k8s-policies/monitoring/monitoring-values.yaml \
             --wait \
             --atomic \
-            --timeout=20m0s # Changed to 20m, as we discussed longer timeouts might be needed
+            --timeout=20m0s # Corrected line continuation and set to 20m
           echo "Prometheus and Grafana installation complete."
 
       # =======================================================
@@ -309,7 +302,6 @@ jobs:
           echo "[+] Running kube-bench CIS Benchmark scan inside the cluster..."
           kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
 
-          # --- ADD THESE DIAGNOSTIC STEPS HERE ---
           echo "--- Kube-bench Diagnostics ---"
           echo "Getting Kube-bench Job status (in kube-system):"
           kubectl get job kube-bench -n kube-system || true
@@ -330,21 +322,6 @@ jobs:
             kubectl get pods -n kube-system || true
           fi
           echo "--- End Kube-bench Diagnostics ---"
-          # --- END DIAGNOSTIC STEPS ---
-
-          echo "Waiting for kube-bench job to complete (max 10 minutes)..."
-          kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
-
-          KUBE_BENCH_POD=$(kubectl get pods -l app=kube-bench -n kube-system -o jsonpath='{.items[0].metadata.name}' || true)
-          if [ -n "$KUBE_BENCH_POD" ]; then
-            echo "Fetching logs from kube-bench pod: $KUBE_BENCH_POD"
-            kubectl logs "$KUBE_BENCH_POD" -n kube-system > ${{ env.REPORTS_DIR }}/kube-bench-report.txt
-            echo "Deleting kube-bench job..."
-            kubectl delete -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
-            echo "[+] kube-bench report saved and job cleaned up."
-          else
-            echo "::warning:: Kube-bench pod not found. Skipping report collection and cleanup."
-          fi
 
           echo "Waiting for kube-bench job to complete (max 10 minutes)..."
           kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
@@ -406,29 +383,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      # =======================================================
-      # 8. CLEANUP (Optional - Uninstall App & Security Components)
-      # =======================================================
-      # - name: Cleanup Kubernetes Resources
-      #   if: false # Change to 'true' to enable this cleanup step for testing or a dedicated destroy workflow
-      #   run: |
-      #     echo "Starting Kubernetes resource cleanup..."
-      #     helm uninstall kube-prometheus-stack -n monitoring --wait || true
-      #     helm uninstall trivy-operator -n trivy-system --wait || true
-      #     helm uninstall falco -n falco --wait || true
-      #     helm uninstall kyverno -n kyverno --wait || true
-      #     helm uninstall cluster-autoscaler -n kube-system --wait || true
-      #     helm uninstall external-dns -n external-dns --wait || true
-      #     helm uninstall aws-load-balancer-controller -n kube-system --wait || true
-      #     istioctl uninstall --purge -y || true
-      #     kubectl delete ns hipster-shop --ignore-not-found --timeout=5m || true
-      #     kubectl delete ns external-dns --ignore-not-found --timeout=5m || true
-      #     kubectl delete ns falco --ignore-not-found --timeout=5m || true
-      #     kubectl delete ns kyverno --ignore-not-found --timeout=5m || true
-      #     kubectl delete ns monitoring --ignore-not-found --timeout=5m || true
-      #     kubectl delete ns trivy-system --ignore-not-found --timeout=5m || true
-      #     echo "Kubernetes components uninstalled."
-
 
 
 # name: new Deploy App & Security Mesh to Existing EKS
@@ -474,8 +428,9 @@ jobs:
 #         uses: aws-actions/configure-aws-credentials@v4
 #         with:
 #           # THIS IS CRITICAL: The ARN of the IAM Role for GitHub Actions
-#           # role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+#           # role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }} # <-- Use the secret
 #           # aws-region: ${{ env.AWS_REGION }}
+#           # The hardcoded ARN below should NOT be used in production.
 #           role-to-assume: arn:aws:iam::009593259890:role/github-actions-terraform-role
 #           aws-region: us-east-1
 
@@ -490,7 +445,7 @@ jobs:
 #           version: 'v3.12.0'
 
 #       # =======================================================
-#       # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS) - MOVED UP
+#       # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS)
 #       # =======================================================
 #       - name: Update Kubeconfig
 #         run: |
@@ -499,12 +454,17 @@ jobs:
 #           echo "Kubeconfig updated for cluster ${{ env.CLUSTER_NAME }}."
 #           kubectl get nodes # Verify kubectl can connect to your EKS cluster
 
+#       - name: Create Reports Directory
+#         run: mkdir -p ${{ env.REPORTS_DIR }}
+
 #       # =======================================================
 #       # 3. SETUP ISTIO (Now that Kubeconfig is ready)
 #       # =======================================================
 #       - name: Setup Istioctl CLI
 #         run: |
 #           echo "Setting up istioctl version 1.20.0..."
+#           # The curl command output is captured and then echoed to avoid issues
+#           # if the output itself contains special characters that confuse the shell.
 #           ISTIO_INSTALL_OUTPUT=$(curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh - 2>&1)
 #           echo "$ISTIO_INSTALL_OUTPUT" # Log the output for visibility
 
@@ -515,58 +475,23 @@ jobs:
 #           istioctl version --remote=false # This should pass
 #           echo "Istioctl setup complete."
 
-#           # Now, after Kubeconfig is set AND istioctl is in PATH,
-#           # we can run precheck.
 #           echo "Running Istio pre-installation check..."
 #           istioctl x precheck # This should now succeed
 
-#       - name: Create Reports Directory # This step can be here or earlier
-#         run: mkdir -p ${{ env.REPORTS_DIR }}
-
-        
-#       # - name: Download Istioctl CLI
-#       #   run: |
-#       #     echo "Downloading Istioctl version 1.20.0..."
-#       #     curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-#       #     echo "Download complete."
-
-#       # - name: Add Istioctl to PATH
-#       #   run: |
-#       #     ISTIO_BIN_DIR="${GITHUB_WORKSPACE}/istio-1.20.0/bin"
-#       #     echo "$ISTIO_BIN_DIR" >> $GITHUB_PATH
-#       #     echo "Istioctl bin added to PATH: $ISTIO_BIN_DIR"
-
-#       # - name: Verify Istioctl installation
-#       #   run: |
-#       #     echo "Verifying istioctl..."
-#       #     istioctl version --remote=false
-
-#       # - name: Run Istio precheck
-#       #   run: |
-#       #     echo "Running Istio pre-installation check..."
-#       #     istioctl x precheck --skip-checks
-
-
-#       # - name: Create Reports Directory
-#       #   run: mkdir -p "${{ env.REPORTS_DIR }}"
-
-#       # # =======================================================
-#       # # 2. PREPARE KUBERNETES CONTEXT (Connect to your existing EKS)
-#       # # =======================================================
-#       # - name: Update Kubeconfig
-#       #   run: |
-#       #     mkdir -p $HOME/.kube/
-#       #     aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
-#       #     echo "Kubeconfig updated for cluster ${{ env.CLUSTER_NAME }}."
-#       #     kubectl get nodes # Verify kubectl can connect to your EKS cluster
-
 #       # =======================================================
-#       # 3. DEPLOY SECURITY MESH COMPONENTS (AND OPTIONAL CORE ADDONS)
-#       # =======================================================    
+#       # 4. DEPLOY SECURITY MESH COMPONENTS (AND OPTIONAL CORE ADDONS)
+#       # =======================================================
+#       - name: Uninstall previous deployments (Cleanup)
+#         run: |
+#           helm uninstall falco -n falco || true
+#           helm uninstall kyverno -n kyverno || true
+#           # Wait a moment for resources to be deleted
+#           sleep 30
 #       - name: Install Kyverno (Policy Engine)
 #         run: |
 #           helm repo add kyverno https://kyverno.github.io/kyverno/ --force-update
-#           helm upgrade --install kyverno kyverno/kyverno -n kyverno --create-namespace --wait --atomic
+#           helm upgrade --install kyverno kyverno/kyverno -n kyverno --create-namespace --wait --atomic \
+#           --timeout=15m0s
 #           echo "Kyverno installation complete."
 
 #       - name: Apply Kyverno Policies
@@ -574,38 +499,112 @@ jobs:
 #           if [ -d "k8s-policies/kyverno" ]; then
 #             echo "Applying Kyverno policies from k8s-policies/kyverno/"
 #             kubectl apply -f k8s-policies/kyverno/
-#             sleep 10
+#             sleep 10 # Give Kyverno a moment to register policies
 #             echo "Kyverno policies applied."
 #           else
 #             echo "::warning:: k8s-policies/kyverno/ directory not found. Skipping Kyverno policy application."
 #           fi
-#         # (AWS setup, kubectl setup, etc… above)
 
+#       # ------------------ CREATE VALUES FILE ------------------
 #       - name: Create Falco values file
 #         run: |
-#           cat <<EOF > falco-values.yaml
-#       daemonset:
-#         podLabels:
-#           app: falco
-#           environment: production
+#           mkdir -p falco/
+#           cat <<'EOF' > falco/falco-values.yaml
+#           daemonset:
+#             podLabels:
+#               app: falco
+#               environment: production
 
-#       resources:
-#         limits:
-#           cpu: 500m
-#           memory: 512Mi
-#         requests:
-#           cpu: 200m
-#           memory: 256Mi
-#       EOF
+#           resources:
+#             limits:
+#               cpu: 500m
+#               memory: 512Mi
+#             requests:
+#               cpu: 200m
+#               memory: 256Mi
 
+#           driver:
+#             enabled: true
+#             loader:
+#               initContainer:
+#                 enabled: true
+#                 image:
+#                   registry: docker.io
+#                   repository: falcosecurity/falco-driver-loader
+#                   tag: latest
+#                   pullPolicy: IfNotPresent
+#                 resources:
+#                   limits:
+#                     cpu: 200m
+#                     memory: 256Mi
+#                   requests:
+#                     cpu: 100m
+#                     memory: 128Mi
+
+#           falcoctl:
+#             artifact:
+#               install:
+#                 resources:
+#                   limits:
+#                     cpu: 200m
+#                     memory: 256Mi
+#                   requests:
+#                     cpu: 100m
+#                     memory: 128Mi
+
+#           falcoExporter:
+#             enabled: true
+#             resources:
+#               limits:
+#                 cpu: 200m
+#                 memory: 256Mi
+#               requests:
+#                 cpu: 100m
+#                 memory: 128Mi
+#           EOF
+#           echo "Falco values file created."
+
+#       # ------------------ INSTALL FALCO ------------------
 #       - name: Install Falco (Runtime Security Engine)
 #         run: |
 #           helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
 #           helm upgrade --install falco falcosecurity/falco \
 #             -n falco --create-namespace --wait --atomic \
-#             -f falco-values.yaml \
+#             -f falco/falco-values.yaml \
 #             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${{ secrets.FALCO_IRSA_ROLE_ARN }}"
 #           echo "Falco installation complete."
+
+#       # ------------------ DIAGNOSTICS (keep this step) ------------------
+#       - name: Diagnose Falco Installation Failure
+#         if: failure()
+#         run: |
+#           echo "--- Falco Installation Diagnostics ---"
+
+#           echo "Current context:"
+#           kubectl config current-context
+
+#           echo "Falco namespace:"
+#           kubectl get namespace falco || true
+
+#           echo "Falco DaemonSet:"
+#           kubectl get daemonset -n falco falco || true
+#           kubectl describe daemonset -n falco falco || true
+
+#           echo "Falco Pods:"
+#           kubectl get pods -n falco -o wide || true
+#           kubectl describe pods -l app.kubernetes.io/name=falco -n falco || true
+
+#           echo "Falco pod logs:"
+#           P=$(kubectl get pods -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+#           if [ -n "$P" ]; then
+#             kubectl logs "$P" -n falco --all-containers || true
+#           fi
+
+#           echo "Namespace events:"
+#           kubectl get events -n falco --sort-by='.lastTimestamp' || true
+
+#           echo "--- END DIAGNOSTICS ---"
+
 
 #       - name: Install Trivy Operator (Vulnerability Scanner)
 #         run: |
@@ -618,17 +617,35 @@ jobs:
 #           istioctl install --set profile=demo -y
 #           echo "Istio Service Mesh installed with the demo profile."
 
+#       - name: Uninstall previous deployments (Cleanup)
+#         run: |
+#           helm uninstall falco -n falco || true
+#           helm uninstall trivy-operator -n trivy-system || true # Adding trivy-operator for completeness
+#           helm uninstall kyverno -n kyverno || true
+#           helm uninstall kube-prometheus-stack -n monitoring || true # <--- ADD THIS LINE
+#           # Add any other large chart uninstalls here if needed later (e.g., Istio)
+#           echo "Waiting 30 seconds for resources to terminate..."
+#           sleep 30
+#           # Optionally delete namespaces, but be careful with core ones like kube-system or default
+#           # kubectl delete ns falco || true
+#           # kubectl delete ns trivy-system || true
+#           # kubectl delete ns kyverno || true
+#           # kubectl delete ns monitoring || true
 #       - name: Install Prometheus and Grafana (Monitoring Stack)
 #         run: |
 #           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
 #           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 #             --version 47.6.0 \
-#             --namespace monitoring --create-namespace \
-#             -f k8s-policies/monitoring/monitoring-values.yaml --wait --atomic
+#             --namespace monitoring \
+#             --create-namespace \
+#             -f k8s-policies/monitoring/monitoring-values.yaml \
+#             --wait \
+#             --atomic \
+#             --timeout=20m0s # Changed to 20m, as we discussed longer timeouts might be needed
 #           echo "Prometheus and Grafana installation complete."
 
 #       # =======================================================
-#       # 4. DEPLOY APPLICATION (Hipster Shop & Route 53 Ingress)
+#       # 5. DEPLOY APPLICATION (Hipster Shop & Route 53 Ingress)
 #       # =======================================================
 #       - name: Deploy Hipster Shop and Ingress
 #         run: |
@@ -649,7 +666,7 @@ jobs:
 #           echo "Hipster Shop frontend deployment is ready."
 
 #       # =======================================================
-#       # 5. RUN SECURITY AUDITS & REPORTING
+#       # 6. RUN SECURITY AUDITS & REPORTING
 #       # =======================================================
 #       - name: Audit Calico Network Policies
 #         run: |
@@ -678,6 +695,44 @@ jobs:
 #         run: |
 #           echo "[+] Running kube-bench CIS Benchmark scan inside the cluster..."
 #           kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
+
+#           # --- ADD THESE DIAGNOSTIC STEPS HERE ---
+#           echo "--- Kube-bench Diagnostics ---"
+#           echo "Getting Kube-bench Job status (in kube-system):"
+#           kubectl get job kube-bench -n kube-system || true
+#           echo "Getting Kube-bench Pods (in kube-system):"
+#           kubectl get pods -l app=kube-bench -n kube-system || true
+
+#           KUBE_BENCH_POD=$(kubectl get pods -l app=kube-bench -n kube-system -o jsonpath='{.items[0].metadata.name}' || true)
+
+#           if [ -n "$KUBE_BENCH_POD" ]; then
+#             echo "Found Kube-bench Pod: $KUBE_BENCH_POD"
+#             echo "Describing Kube-bench Pod:"
+#             kubectl describe pod "$KUBE_BENCH_POD" -n kube-system || true
+#             echo "Getting Kube-bench Pod logs:"
+#             kubectl logs "$KUBE_BENCH_POD" -n kube-system || true
+#           else
+#             echo "::warning:: Kube-bench pod not found in 'kube-system' namespace (or it already succeeded/failed and was cleaned up before being found by this script)."
+#             echo "Attempting to list all pods in 'kube-system' namespace for more context:"
+#             kubectl get pods -n kube-system || true
+#           fi
+#           echo "--- End Kube-bench Diagnostics ---"
+#           # --- END DIAGNOSTIC STEPS ---
+
+#           echo "Waiting for kube-bench job to complete (max 10 minutes)..."
+#           kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
+
+#           KUBE_BENCH_POD=$(kubectl get pods -l app=kube-bench -n kube-system -o jsonpath='{.items[0].metadata.name}' || true)
+#           if [ -n "$KUBE_BENCH_POD" ]; then
+#             echo "Fetching logs from kube-bench pod: $KUBE_BENCH_POD"
+#             kubectl logs "$KUBE_BENCH_POD" -n kube-system > ${{ env.REPORTS_DIR }}/kube-bench-report.txt
+#             echo "Deleting kube-bench job..."
+#             kubectl delete -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml -n kube-system
+#             echo "[+] kube-bench report saved and job cleaned up."
+#           else
+#             echo "::warning:: Kube-bench pod not found. Skipping report collection and cleanup."
+#           fi
+
 #           echo "Waiting for kube-bench job to complete (max 10 minutes)..."
 #           kubectl wait --for=condition=complete job/kube-bench -n kube-system --timeout=10m
 
@@ -728,7 +783,7 @@ jobs:
 #           echo "[+] Kyverno policy reports exported."
 
 #       # =======================================================
-#       # 6. UPLOAD REPORTS AS ARTIFACTS
+#       # 7. UPLOAD REPORTS AS ARTIFACTS
 #       # =======================================================
 #       - name: Upload Security Reports Artifacts
 #         uses: actions/upload-artifact@v4
@@ -738,25 +793,26 @@ jobs:
 #           retention-days: 7
 #           if-no-files-found: ignore
 
-#       # =======================================================
-#       # 7. CLEANUP (Optional - Uninstall App & Security Components)
-#       # =======================================================
-#       # - name: Cleanup Kubernetes Resources
-#       #   if: false # Change to 'true' to enable this cleanup step for testing or a dedicated destroy workflow
-#       #   run: |
-#       #     echo "Starting Kubernetes resource cleanup..."
-#       #     helm uninstall kube-prometheus-stack -n monitoring --wait || true
-#       #     helm uninstall trivy-operator -n trivy-system --wait || true
-#       #     helm uninstall falco -n falco --wait || true
-#       #     helm uninstall kyverno -n kyverno --wait || true
-#       #     helm uninstall cluster-autoscaler -n kube-system --wait || true
-#       #     helm uninstall external-dns -n external-dns --wait || true
-#       #     helm uninstall aws-load-balancer-controller -n kube-system --wait || true
-#       #     istioctl uninstall --purge -y || true
-#       #     kubectl delete ns hipster-shop --ignore-not-found --timeout=5m || true
-#       #     kubectl delete ns external-dns --ignore-not-found --timeout=5m || true
-#       #     kubectl delete ns falco --ignore-not-found --timeout=5m || true
-#       #     kubectl delete ns kyverno --ignore-not-found --timeout=5m || true
-#       #     kubectl delete ns monitoring --ignore-not-found --timeout=5m || true
-#       #     kubectl delete ns trivy-system --ignore-not-found --timeout=5m || true
-#       #     echo "Kubernetes components uninstalled."
+      # =======================================================
+      # 8. CLEANUP (Optional - Uninstall App & Security Components)
+      # =======================================================
+      # - name: Cleanup Kubernetes Resources
+      #   if: false # Change to 'true' to enable this cleanup step for testing or a dedicated destroy workflow
+      #   run: |
+      #     echo "Starting Kubernetes resource cleanup..."
+      #     helm uninstall kube-prometheus-stack -n monitoring --wait || true
+      #     helm uninstall trivy-operator -n trivy-system --wait || true
+      #     helm uninstall falco -n falco --wait || true
+      #     helm uninstall kyverno -n kyverno --wait || true
+      #     helm uninstall cluster-autoscaler -n kube-system --wait || true
+      #     helm uninstall external-dns -n external-dns --wait || true
+      #     helm uninstall aws-load-balancer-controller -n kube-system --wait || true
+      #     istioctl uninstall --purge -y || true
+      #     kubectl delete ns hipster-shop --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns external-dns --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns falco --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns kyverno --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns monitoring --ignore-not-found --timeout=5m || true
+      #     kubectl delete ns trivy-system --ignore-not-found --timeout=5m || true
+      #     echo "Kubernetes components uninstalled."
+
