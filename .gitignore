@@ -18,3 +18,4 @@ terraform.tfstate.backup
 # OS generated files
 .DS_Store
 Thumbs.db
+eksctl
