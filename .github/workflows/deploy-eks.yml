@@ -249,9 +249,12 @@ jobs:
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
             --version 47.6.0 \
-            --namespace monitoring --create-namespace \
-            -f k8s-policies/monitoring/monitoring-values.yaml --wait --atomic
-            --timeout=15m0s
+            --namespace monitoring \
+            --create-namespace \
+            -f k8s-policies/monitoring/monitoring-values.yaml \
+            --wait \
+            --atomic \
+            --timeout=20m0s # Changed to 20m, as we discussed longer timeouts might be needed
           echo "Prometheus and Grafana installation complete."
 
       # =======================================================
