@@ -399,17 +399,17 @@ jobs:
 
               aws route53 change-resource-record-sets \
                 --hosted-zone-id Z097297112UWA30TUHJXW \
-                --change-batch '{
-                  "Changes": [{
-                    "Action": "UPSERT",
-                    "ResourceRecordSet": {
-                      "Name": "frontend.ailawal.ca",
-                      "Type": "CNAME",
-                      "TTL": 300,
-                      "ResourceRecords": [{"Value": "'"$ALB_DNS"'"}]
+                --change-batch "{
+                  \"Changes\": [{
+                    \"Action\": \"UPSERT\",
+                    \"ResourceRecordSet\": {
+                      \"Name\": \"frontend.ailawal.ca\",
+                      \"Type\": \"CNAME\",
+                      \"TTL\": 300,
+                      \"ResourceRecords\": [{\"Value\": \"$ALB_DNS\"}]
                     }
                   }]
-                }'
+                }"
               echo "DNS record for frontend.ailawal.ca has been updated."
 
 
