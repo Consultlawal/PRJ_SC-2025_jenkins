@@ -1,3 +1,4 @@
+# k8s-policies/kyverno/require-resource-limits.yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -6,7 +7,7 @@ spec:
   validationFailureAction: enforce
   background: true
   rules:
-    - name: check-limits
+    - name: check-cpu-and-memory-limits
       match:
         resources:
           kinds:
@@ -19,7 +20,7 @@ spec:
             - istio-system
             - monitoring
       validate:
-        message: "CPU and memory limits must be set for all containers."
+        message: "Containers must specify CPU and memory limits."
         pattern:
           spec:
             containers:

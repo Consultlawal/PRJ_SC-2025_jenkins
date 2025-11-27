@@ -1,0 +1,47 @@
+# Minimal values for kube-prometheus-stack on a small EKS cluster
+prometheus:
+  prometheusSpec:
+    # Disable persistent storage to avoid PVC issues
+    storageSpec: {}
+    # Reduce CPU/memory to fit small nodes
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "200m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+    # Optional: reduce retention if needed
+    retention: 12h
+
+alertmanager:
+  alertmanagerSpec:
+    storage: {}
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+
+grafana:
+  enabled: true
+  adminPassword: "prom-operator"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Optional: disable unnecessary exporters
+defaultRules:
+  create: true
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true

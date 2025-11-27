@@ -237,7 +237,36 @@ jobs:
           istioctl install --set profile=demo -y
           echo "Istio Service Mesh installed with the demo profile."
 
+      # - name: Install Prometheus and Grafana (Monitoring Stack)
+      #   run: |
+      #     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+      #     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      #       --version 47.6.0 \
+      #       --namespace monitoring \
+      #       --create-namespace \
+      #       -f k8s-policies/monitoring/monitoring-values.yaml \
+      #       --wait \
+      #       --atomic \
+      #       --timeout=20m0s # Corrected line continuation and set to 20m
+      #     echo "Prometheus and Grafana installation complete."
+
+      # - name: Install Prometheus and Grafana (Monitoring Stack)
+      #   run: |
+      #     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+      #     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      #       --version 47.6.0 \
+      #       --namespace monitoring \
+      #       --create-namespace \
+      #       -f k8s-policies/monitoring/monitoring-values.yaml \
+      #       --wait \
+      #       --timeout=20m0s
+      #       # Removed --atomic so resources stay on failure for debugging
+      #     echo "Prometheus and Grafana installation complete."
+
       - name: Install Prometheus and Grafana (Monitoring Stack)
+        env:
+          KUBECONFIG_QPS: "20"
+          KUBECONFIG_BURST: "50"
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
@@ -247,8 +276,7 @@ jobs:
             -f k8s-policies/monitoring/monitoring-values.yaml \
             --wait \
             --atomic \
-            --timeout=20m0s # Corrected line continuation and set to 20m
-          echo "Prometheus and Grafana installation complete."
+            --timeout=20m0s
 
       # =======================================================
       # 5. DEPLOY APPLICATION (Hipster Shop & Route 53 Ingress)
