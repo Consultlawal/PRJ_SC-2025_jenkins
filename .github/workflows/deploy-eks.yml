@@ -49,6 +49,11 @@ jobs:
         with:
           version: 'v1.29.0'
 
+      - name: Check API Server Responsiveness
+        run: |
+          time kubectl get --raw /healthz
+          time kubectl get nodes
+
       - name: Setup Helm
         uses: azure/setup-helm@v3
         with:
@@ -66,6 +71,12 @@ jobs:
 
       - name: Create Reports Directory
         run: mkdir -p ${{ env.REPORTS_DIR }}
+
+      - name: Check API Server Responsiveness
+        run: |
+          echo "Testing Kubernetes API server latency..."
+          time kubectl get --raw /healthz
+          time kubectl get nodes
 
       # =======================================================
       # 3. SETUP ISTIO (Now that Kubeconfig is ready)
@@ -263,10 +274,21 @@ jobs:
       #       # Removed --atomic so resources stay on failure for debugging
       #     echo "Prometheus and Grafana installation complete."
 
+      # - name: Install Prometheus and Grafana (Monitoring Stack)
+      #   env:
+      #     KUBECONFIG_QPS: "20"
+      #     KUBECONFIG_BURST: "50"
+      #   run: |
+      #     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+      #     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      #       --version 47.6.0 \
+      #       --namespace monitoring \
+      #       --create-namespace \
+      #       -f k8s-policies/monitoring/monitoring-values.yaml \
+      #       --wait \
+      #       --atomic \
+      #       --timeout=20m0s
       - name: Install Prometheus and Grafana (Monitoring Stack)
-        env:
-          KUBECONFIG_QPS: "20"
-          KUBECONFIG_BURST: "50"
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
           helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
@@ -277,7 +299,56 @@ jobs:
             --wait \
             --atomic \
             --timeout=20m0s
+          echo "Prometheus and Grafana installation complete."
 
+      - name: Diagnose Prometheus Installation Failure
+        if: failure()
+        run: |
+          echo "--- Prometheus Stack Installation Diagnostics ---"
+
+          echo "Current context:"
+          kubectl config current-context
+
+          echo "Monitoring namespace:"
+          kubectl get namespace monitoring || true
+
+          echo "Prometheus Stack resources in monitoring namespace:"
+          kubectl get all -n monitoring || true
+
+          echo "Prometheus Operator deployment status:"
+          kubectl get deployment prometheus-operator -n monitoring || true
+          kubectl describe deployment prometheus-operator -n monitoring || true
+
+          echo "Prometheus Operator pod logs:"
+          PROMETHEUS_OPERATOR_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus-operator -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$PROMETHEUS_OPERATOR_POD" ]; then
+            echo "Found Prometheus Operator Pod: $PROMETHEUS_OPERATOR_POD"
+            kubectl logs "$PROMETHEUS_OPERATOR_POD" -n monitoring --tail=100 || true
+          else
+            echo "::warning:: Prometheus Operator pod not found."
+          fi
+
+          echo "Prometheus (main instance) deployment/statefulset status:"
+          kubectl get prometheus -n monitoring || true # Custom Resource
+          kubectl get statefulset prometheus-kube-prometheus-stack-prometheus -n monitoring || true
+          kubectl describe statefulset prometheus-kube-prometheus-stack-prometheus -n monitoring || true
+
+          echo "Grafana deployment status:"
+          kubectl get deployment kube-prometheus-stack-grafana -n monitoring || true
+          kubectl describe deployment kube-prometheus-stack-grafana -n monitoring || true
+
+          echo "Namespace events for monitoring:"
+          kubectl get events -n monitoring --sort-by='.lastTimestamp' || true
+
+          echo "All pods in monitoring namespace (detailed):"
+          kubectl get pods -n monitoring -o wide || true
+          kubectl describe pods -l release=kube-prometheus-stack -n monitoring || true
+
+          echo "MutatingWebhookConfigurations and ValidatingWebhookConfigurations (cluster-wide):"
+          kubectl get mutatingwebhookconfigurations -o yaml | grep -A2 -E "name|monitoring" || true
+          kubectl get validatingwebhookconfigurations -o yaml | grep -A2 -E "name|monitoring" || true
+
+          echo "--- END PROMETHEUS STACK DIAGNOSTICS ---"
       # =======================================================
       # 5. DEPLOY APPLICATION (Hipster Shop & Route 53 Ingress)
       # =======================================================
