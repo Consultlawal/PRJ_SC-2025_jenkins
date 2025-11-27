@@ -9,7 +9,7 @@ variable "key_pair_name" {
 }
 
 variable "eks_node_instance_type" {
-  default = "t3.medium"
+  default = "m5.large"
 }
 
 variable "region" {
