@@ -386,7 +386,7 @@ jobs:
               echo "Hipster Shop application manifests applied."
 
               echo "Deploying Hipster Shop Ingress..."
-              kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
+              kubectl apply -f ./k8s/hipster-shop-ingress.yaml -n hipster-shop
               echo "Hipster Shop Ingress applied."
 
               echo "Waiting for Hipster Shop frontend to be ready (max 5 minutes)..."
