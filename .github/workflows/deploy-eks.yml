@@ -379,19 +379,38 @@ jobs:
                     namespaces:
                       - hipster-shop
           EOF
-          echo "Kyverno exception applied."
+              echo "Kyverno exception applied."
 
-          echo "Deploying Hipster Shop application..."
-          kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml -n hipster-shop
-          echo "Hipster Shop application manifests applied."
+              echo "Deploying Hipster Shop application..."
+              kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml -n hipster-shop
+              echo "Hipster Shop application manifests applied."
 
-          echo "Deploying Hipster Shop Ingress..."
-          kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
-          echo "Hipster Shop Ingress applied."
+              echo "Deploying Hipster Shop Ingress..."
+              kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
+              echo "Hipster Shop Ingress applied."
 
-          echo "Waiting for Hipster Shop frontend to be ready (max 5 minutes)..."
-          kubectl wait --for=condition=Available deployment/frontend -n hipster-shop --timeout=5m
-          echo "Hipster Shop frontend deployment is ready."
+              echo "Waiting for Hipster Shop frontend to be ready (max 5 minutes)..."
+              kubectl wait --for=condition=Available deployment/frontend -n hipster-shop --timeout=5m
+              echo "Hipster Shop frontend deployment is ready."
+
+              echo "Configuring Route53 DNS for frontend.ailawal.ca..."
+              ALB_DNS=$(kubectl get svc -n istio-system istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+              echo "ALB DNS: $ALB_DNS"
+
+              aws route53 change-resource-record-sets \
+                --hosted-zone-id Z097297112UWA30TUHJXW \
+                --change-batch '{
+                  "Changes": [{
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                      "Name": "frontend.ailawal.ca",
+                      "Type": "CNAME",
+                      "TTL": 300,
+                      "ResourceRecords": [{"Value": "'"$ALB_DNS"'"}]
+                    }
+                  }]
+                }'
+              echo "DNS record for frontend.ailawal.ca has been updated."
 
 
       # =======================================================
