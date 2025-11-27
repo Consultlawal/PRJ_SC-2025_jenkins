@@ -230,6 +230,20 @@ jobs:
           istioctl install --set profile=demo -y
           echo "Istio Service Mesh installed with the demo profile."
 
+      - name: Uninstall previous deployments (Cleanup)
+        run: |
+          helm uninstall falco -n falco || true
+          helm uninstall trivy-operator -n trivy-system || true # Adding trivy-operator for completeness
+          helm uninstall kyverno -n kyverno || true
+          helm uninstall kube-prometheus-stack -n monitoring || true # <--- ADD THIS LINE
+          # Add any other large chart uninstalls here if needed later (e.g., Istio)
+          echo "Waiting 30 seconds for resources to terminate..."
+          sleep 30
+          # Optionally delete namespaces, but be careful with core ones like kube-system or default
+          # kubectl delete ns falco || true
+          # kubectl delete ns trivy-system || true
+          # kubectl delete ns kyverno || true
+          # kubectl delete ns monitoring || true
       - name: Install Prometheus and Grafana (Monitoring Stack)
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
