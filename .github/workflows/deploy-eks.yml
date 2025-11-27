@@ -129,6 +129,18 @@ jobs:
 
       # -# Install AWS Load Balancer Controller (Helm) - <<< IMPORTANT: PLACE THIS HERE AND ADD --WAIT
       # ---------------------------------------------------------
+      - name: Create AWS Load Balancer Controller ServiceAccount
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: aws-load-balancer-controller
+            namespace: kube-system
+            annotations:
+              eks.amazonaws.com/role-arn: arn:aws:iam::009593259890:role/aws-load-balancer-controller-irsa
+          EOF
+
       - name: Install AWS Load Balancer Controller
         run: |
           echo "Installing AWS Load Balancer Controller..."
