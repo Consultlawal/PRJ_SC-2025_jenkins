@@ -237,6 +237,7 @@ jobs:
             --version 47.6.0 \
             --namespace monitoring --create-namespace \
             -f k8s-policies/monitoring/monitoring-values.yaml --wait --atomic
+            --timeout=15m0s
           echo "Prometheus and Grafana installation complete."
 
       # =======================================================
