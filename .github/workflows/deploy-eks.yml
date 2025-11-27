@@ -350,6 +350,7 @@ jobs:
       # =======================================================
       - name: Deploy Hipster Shop and Ingress
         run: |
+          echo "Creating namespace..."
           kubectl create ns hipster-shop --dry-run=client -o yaml | kubectl apply -f -
           kubectl label namespace hipster-shop istio-injection=enabled --overwrite
           echo "Namespace 'hipster-shop' created and Istio injection enabled."
@@ -361,6 +362,33 @@ jobs:
           echo "Deploying Hipster Shop Ingress..."
           kubectl apply -f hipster-shop-ingress.yaml -n hipster-shop
           echo "Hipster Shop Ingress applied."
+
+          echo "Patching Deployments to satisfy Kyverno policies..."
+          for dep in $(kubectl get deployment -n hipster-shop -o name); do
+            DEP_NAME=$(echo $dep | cut -d/ -f2)
+
+            echo "Patching $DEP_NAME ..."
+
+            # Add environment label + required securityContext
+            kubectl patch $dep -n hipster-shop --type='merge' -p "
+            spec:
+              template:
+                metadata:
+                  labels:
+                    environment: dev
+                spec:
+                  containers:
+                  - name: $DEP_NAME
+                    securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 1000
+                      privileged: false
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: false
+            "
+          done
+
+          echo "All deployments patched to satisfy Kyverno."
 
           echo "Waiting for Hipster Shop frontend to be ready (max 5 minutes)..."
           kubectl wait --for=condition=Available deployment/frontend -n hipster-shop --timeout=5m
