@@ -1,0 +1,1109 @@
+# --- ALB Controller IRSA ---
+
+data "aws_iam_policy_document" "assume_role_alb" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.demo.arn]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test      = "StringEquals"
+      variable = "${replace(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
+    }
+  }
+}
+
+resource "aws_iam_role" "alb_controller" {
+  name               = "${var.cluster_name}-ALBController-Role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role_alb.json
+
+  depends_on = [
+    aws_eks_cluster.demo,
+    aws_iam_openid_connect_provider.demo
+  ]
+}
+
+# resource "aws_iam_role_policy_attachment" "alb_controller_attach" {
+#   role        = aws_iam_role.alb_controller.name
+#   # CORRECTED: Changed to the correct AWS managed policy for the AWS Load Balancer Controller
+#   policy_arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
+
+#   depends_on = [aws_iam_role.alb_controller]
+# }
+
+# terraform/alb-controller-irsa.tf
+
+# ... existing aws_iam_role.alb_controller ...
+
+# IAM Policy for AWS Load Balancer Controller
+# This policy is custom and needs to be created.
+resource "aws_iam_policy" "alb_controller_policy" {
+  name        = "${var.cluster_name}-AWSLoadBalancerControllerIAMPolicy"
+  path        = "/"
+  description = "IAM policy for AWS Load Balancer Controller to manage ALBs, NLBs, and EC2 resources."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:CreateServiceLinkedRole",
+          "ec2:DescribeAccountAttributes",
+          "ec2:DescribeAddresses",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeClassicLinkInstances",
+          "ec2:DescribeCoipPools",
+          "ec2:DescribeInternetGateways",
+          "ec2:DescribeNetworkAcls",
+          "ec2:DescribePublicIpv4Pools",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeTags",
+          "ec2:DescribeVpcPeeringConnections",
+          "ec2:DescribeVpcs",
+          "ec2:AllocateAddress",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:AssociateAddress",
+          "ec2:AssociateRouteTable",
+          "ec2:AttachInternetGateway",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:CopySnapshot",
+          "ec2:CreateInternetGateway",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateSnapshot",
+          "ec2:CreateTags",
+          "ec2:CreateVolume",
+          "ec2:DeleteInternetGateway",
+          "ec2:DeleteSecurityGroup",
+          "ec2:DeleteSnapshot",
+          "ec2:DeleteTags",
+          "ec2:DeleteVolume",
+          "ec2:DeregisterInstancesFromLoadBalancer",
+          "ec2:DetachInternetGateway",
+          "ec2:DisassociateAddress",
+          "ec2:DisassociateRouteTable",
+          "ec2:GetLoadBalancerAttribute",
+          "ec2:ModifyInstanceAttribute",
+          "ec2:ModifyLoadBalancerAttributes",
+          "ec2:ModifyVolume",
+          "ec2:RebootInstances",
+          "ec2:RegisterInstancesWithLoadBalancer",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RunInstances",
+          "ec2:StopInstances",
+          "ec2:TerminateInstances",
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:ModifyNetworkInterfaceAttribute",
+          "ec2:AttachNetworkInterface",
+          "ec2:DetachNetworkInterface",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses",
+          "ec2:CreateVpcEndpoint",
+          "ec2:DeleteVpcEndpoints",
+          "ec2:DescribeVpcEndpoints",
+          "ec2:ModifyVpcEndpoint",
+          "ec2:CreateLaunchTemplate",
+          "ec2:DeleteLaunchTemplate",
+          "ec2:DescribeLaunchTemplates",
+          "ec2:DescribeKeyPairs",
+          "ec2:DescribeInstances",
+          "ec2:DescribeImages",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeInstanceStatus",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "elasticloadbalancing:DescribeLoadBalancerAttributes",
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:DescribeTags",
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeTargetHealth",
+          "elasticloadbalancing:CreateLoadBalancer",
+          "elasticloadbalancing:CreateListener",
+          "elasticloadbalancing:CreateRule",
+          "elasticloadbalancing:CreateTargetGroup",
+          "elasticloadbalancing:DeleteLoadBalancer",
+          "elasticloadbalancing:DeleteListener",
+          "elasticloadbalancing:DeleteRule",
+          "elasticloadbalancing:DeleteTargetGroup",
+          "elasticloadbalancing:ModifyLoadBalancerAttributes",
+          "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:ModifyRule",
+          "elasticloadbalancing:ModifyTargetGroup",
+          "elasticloadbalancing:ModifyTargetGroupAttributes",
+          "elasticloadbalancing:RegisterTargets",
+          "elasticloadbalancing:SetIpAddressType",
+          "elasticloadbalancing:SetSecurityGroups",
+          "elasticloadbalancing:SetSubnets",
+          "elasticloadbalancing:SetWebACL",
+          "elasticloadbalancing:RemoveTags",
+          "elasticloadbalancing:AddTags",
+          "wafv2:GetWebACL",
+          "wafv2:GetWebACLForResource",
+          "wafv2:AssociateWebACL",
+          "wafv2:DisassociateWebACL",
+          "wafv2:ListWebACLs",
+          "wafv2:ListResourcesForWebACL",
+          "tag:GetResources",
+          "tag:TagResources",
+          "tag:UntagResources",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = [
+          "arn:aws:s3:::*/*",
+          "arn:aws:s3:::*",
+        ]
+      }
+    ]
+  })
+}
+
+# Attach the custom policy to the ALB Controller role
+resource "aws_iam_role_policy_attachment" "alb_controller_attach" {
+  role       = aws_iam_role.alb_controller.name
+  policy_arn = aws_iam_policy.alb_controller_policy.arn # <-- This is the key change
+}# # --- Cluster Autoscaler IRSA (corrected) ---
+
+# # 1. IAM Policy Document for Cluster Autoscaler permissions
+# data "aws_iam_policy_document" "autoscaler_policy" {
+#   statement {
+#     effect    = "Allow"
+#     actions   = [
+#       "autoscaling:DescribeAutoScalingGroups",
+#       "autoscaling:DescribeAutoScalingInstances",
+#       "autoscaling:DescribeLaunchConfigurations",
+#       "autoscaling:DescribeTags",
+#       "autoscaling:SetDesiredCapacity",
+#       "autoscaling:TerminateInstanceInAutoScalingGroup",
+#       "ec2:DescribeLaunchTemplateVersions",
+#       "ec2:DescribeInstances"
+#     ]
+#     resources = ["*"]
+#   }
+# }
+
+# resource "aws_iam_policy" "cluster_autoscaler" {
+#   name   = "${var.cluster-name}-ClusterAutoscaler-Policy"
+#   policy = data.aws_iam_policy_document.autoscaler_policy.json
+# }
+
+# # 2. Assume role policy for the cluster-autoscaler service account
+# data "aws_iam_policy_document" "autoscaler_assume" {
+#   statement {
+#     effect = "Allow"
+
+#     principals {
+#       type        = "Federated"
+#       identifiers = [aws_iam_openid_connect_provider.demo.arn]
+#     }
+
+#     actions = ["sts:AssumeRoleWithWebIdentity"]
+
+#     condition {
+#       test     = "StringEquals"
+#       variable = "${replace(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://", "")}:sub"
+#       values   = ["system:serviceaccount:kube-system:cluster-autoscaler"]
+#     }
+#   }
+# }
+
+# resource "aws_iam_role" "cluster_autoscaler" {
+#   name               = "${var.cluster-name}-ClusterAutoscaler-Role"
+#   assume_role_policy = data.aws_iam_policy_document.autoscaler_assume.json
+
+#   depends_on = [
+#     aws_eks_cluster.demo,
+#     aws_iam_openid_connect_provider.demo
+#   ]
+# }
+
+# resource "aws_iam_role_policy_attachment" "cluster_autoscaler_attach" {
+#   role       = aws_iam_role.cluster_autoscaler.name
+#   policy_arn = aws_iam_policy.cluster_autoscaler.arn
+# }
+
+
+# --- Cluster Autoscaler IRSA ---
+
+data "aws_iam_policy_document" "autoscaler_policy" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:DescribeAutoScalingInstances",
+      "autoscaling:DescribeLaunchConfigurations",
+      "autoscaling:DescribeTags",
+      "autoscaling:SetDesiredCapacity",
+      "autoscaling:TerminateInstanceInAutoScalingGroup",
+      "ec2:DescribeLaunchTemplateVersions",
+      "ec2:DescribeInstances"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "cluster_autoscaler" {
+  name   = "${var.cluster_name}-ClusterAutoscaler-Policy"
+  policy = data.aws_iam_policy_document.autoscaler_policy.json
+}
+
+data "aws_iam_policy_document" "autoscaler_assume" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.demo.arn]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:cluster-autoscaler"]
+    }
+  }
+}
+
+resource "aws_iam_role" "cluster_autoscaler" {
+  name               = "${var.cluster_name}-ClusterAutoscaler-Role"
+  assume_role_policy = data.aws_iam_policy_document.autoscaler_assume.json
+
+  depends_on = [
+    aws_eks_cluster.demo,
+    aws_iam_openid_connect_provider.demo
+  ]
+}
+
+resource "aws_iam_role_policy_attachment" "cluster_autoscaler_attach" {
+  role       = aws_iam_role.cluster_autoscaler.name
+  policy_arn = aws_iam_policy.cluster_autoscaler.arn
+}
+# --- EKS aws-auth ConfigMap for Worker Nodes and GitHub Actions Role ---
+# This resource configures the `aws-auth` ConfigMap in the `kube-system` namespace.
+# It maps AWS IAM roles to Kubernetes users and groups, allowing those roles
+# to authenticate and authorize against the EKS cluster API.
+# Place this in a new file like 'eks-auth.tf' or within your main Terraform configuration.
+
+resource "kubernetes_config_map_v1" "aws_auth_map" {
+  metadata {
+    name      = "aws-auth"
+    namespace = "kube-system"
+  }
+
+  data = {
+    # mapRoles defines the mapping of IAM roles to Kubernetes groups.
+    mapRoles = yamlencode([
+      # 1. Mapping for EKS Worker Node Role:
+      # This entry allows the EC2 instances in your EKS node groups
+      # to join the cluster. The `system:bootstrappers` and `system:nodes`
+      # groups are standard for worker nodes.
+      {
+        rolearn  = aws_iam_role.demo_node.arn # This comes from your eks-worker-nodes.tf
+        username = "system:node:{{EC2PrivateDNSName}}" # Dynamic username for each node
+        groups = [
+          "system:bootstrappers", # Required for node bootstrapping
+          "system:nodes",         # Required for node operations in Kubernetes
+        ]
+      },
+      # 2. Mapping for GitHub Actions IAM Role:
+      # This entry grants your GitHub Actions OIDC role access to the EKS cluster.
+      # By mapping it to "system:masters", it gets full administrative access,
+      # which is necessary for the CI/CD pipeline to deploy and manage resources.
+      {
+        rolearn  = aws_iam_role.github_actions.arn # This is the IAM role you created for GitHub Actions OIDC
+        username = "github-actions-user"           # A descriptive username for logging purposes
+        groups   = [
+          "system:masters", # Grants full administrative access to the cluster
+        ]
+      }
+    ])
+  }
+
+  # Explicit dependencies ensure that the referenced AWS and Kubernetes resources
+  # are fully provisioned before Terraform attempts to create or update this ConfigMap.
+  # This prevents errors where the ConfigMap tries to reference non-existent roles or clusters.
+  depends_on = [
+    aws_eks_cluster.demo,          # Ensure the EKS cluster itself is fully provisioned
+    aws_iam_role.demo_node,        # Ensure the worker node IAM role is created
+    aws_iam_role.github_actions,   # Ensure the GitHub Actions IAM role is created (from your other .tf file)
+  ]
+}# ---------------------------
+# IAM ROLE FOR EKS CLUSTER
+# ---------------------------
+resource "aws_iam_role" "demo_cluster" {
+  name = "terraform-eks-demo-cluster"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "eks.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = aws_iam_role.demo_cluster.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks_service_policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
+  role       = aws_iam_role.demo_cluster.name
+}
+
+# ---------------------------
+# SECURITY GROUP FOR CONTROL PLANE
+# ---------------------------
+resource "aws_security_group" "eks_cluster_sg" {
+  name        = "terraform-eks-demo-cluster"
+  description = "Cluster communication with worker nodes"
+  vpc_id      = aws_vpc.demo.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group_rule" "eks_api_ingress" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.eks_cluster_sg.id
+}
+
+resource "aws_security_group_rule" "nodes_to_controlplane_443" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = [aws_vpc.demo.cidr_block]
+  security_group_id = aws_security_group.eks_cluster_sg.id
+  description       = "Allow nodes in VPC to reach EKS control plane"
+}
+
+# ---------------------------
+# EKS CLUSTER
+# ---------------------------
+resource "aws_eks_cluster" "demo" {
+  name     = var.cluster_name
+  role_arn = aws_iam_role.demo_cluster.arn
+
+  vpc_config {
+    security_group_ids = [aws_security_group.eks_cluster_sg.id]
+    subnet_ids         = aws_subnet.demo[*].id
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+    aws_iam_role_policy_attachment.eks_service_policy,
+    aws_security_group_rule.nodes_to_controlplane_443
+  ]
+}
+
+# ---------------------------
+# OIDC PROVIDER FOR IRSA
+# ---------------------------
+data "tls_certificate" "eks_oidc" {
+  url        = aws_eks_cluster.demo.identity[0].oidc[0].issuer
+  depends_on = [aws_eks_cluster.demo]
+}
+
+resource "aws_iam_openid_connect_provider" "demo" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
+  url             = aws_eks_cluster.demo.identity[0].oidc[0].issuer
+
+  depends_on = [
+    aws_eks_cluster.demo,
+    data.tls_certificate.eks_oidc
+  ]
+}
+#
+# EKS Worker Nodes Resources
+# Keypair, IAM Roles, Autoscaling Policies, Node Group
+#
+
+#---------------------------------------------
+# 1. TLS Keypair (RSA 4096)
+#---------------------------------------------
+resource "tls_private_key" "key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "local_file" "private_key" {
+  content         = tls_private_key.key.private_key_pem
+  filename        = "${var.cluster_name}-key.pem"
+  file_permission = "400"
+}
+
+resource "aws_key_pair" "public_key" {
+  key_name   = "${var.cluster_name}-public-key"
+  public_key = tls_private_key.key.public_key_openssh
+}
+
+#---------------------------------------------
+# 2. IAM Role for Worker Nodes
+#---------------------------------------------
+resource "aws_iam_role" "demo_node" {
+  name = "${var.cluster_name}-worker-role"
+
+  assume_role_policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+POLICY
+}
+
+# Attach AWS managed EKS policies
+resource "aws_iam_role_policy_attachment" "worker_eks" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.demo_node.name
+}
+
+resource "aws_iam_role_policy_attachment" "worker_cni" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.demo_node.name
+}
+
+resource "aws_iam_role_policy_attachment" "worker_ecr" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.demo_node.name
+}
+
+#---------------------------------------------
+# 3. Autoscaler IAM Policy
+#---------------------------------------------
+data "aws_iam_policy_document" "worker_autoscaling" {
+  statement {
+    sid    = "AllAutoscalingRead"
+    effect = "Allow"
+
+    actions = [
+      "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:DescribeAutoScalingInstances",
+      "autoscaling:DescribeLaunchConfigurations",
+      "autoscaling:DescribeTags",
+      "ec2:DescribeLaunchTemplateVersions"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AutoscalingWriteForOwnedNodes"
+    effect = "Allow"
+
+    actions = [
+      "autoscaling:SetDesiredCapacity",
+      "autoscaling:TerminateInstanceInAutoScalingGroup",
+      "autoscaling:UpdateAutoScalingGroup"
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "autoscaling:ResourceTag/kubernetes.io/cluster/${var.cluster_name}"
+      values   = ["owned"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "autoscaling:ResourceTag/k8s.io/cluster-autoscaler/enabled"
+      values   = ["true"]
+    }
+  }
+}
+
+resource "aws_iam_policy" "worker_autoscaling" {
+  name        = "${var.cluster_name}-worker-autoscaling"
+  description = "Autoscaling policy for EKS worker nodes"
+  policy      = data.aws_iam_policy_document.worker_autoscaling.json
+}
+
+resource "aws_iam_role_policy_attachment" "workers_autoscaling" {
+  policy_arn = aws_iam_policy.worker_autoscaling.arn
+  role       = aws_iam_role.demo_node.name
+}
+
+#---------------------------------------------
+# 4. Optional SSM Access
+#---------------------------------------------
+resource "aws_iam_role" "prod_ssm_role" {
+  name = "${var.cluster_name}-prod-ssm-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+#---------------------------------------------
+# 5. EKS Node Group
+#---------------------------------------------
+resource "aws_eks_node_group" "demo" {
+  cluster_name    = aws_eks_cluster.demo.name
+  node_group_name = "demo"
+  node_role_arn   = aws_iam_role.demo_node.arn
+  subnet_ids      = aws_subnet.demo[*].id
+  instance_types  = [var.eks_node_instance_type]
+
+  remote_access {
+    ec2_ssh_key = aws_key_pair.public_key.key_name
+  }
+
+  tags = {
+    "eks.amazonaws.com/nodegroup"    = "demo"
+    "eks.amazonaws.com/cluster-name" = var.cluster_name
+  }
+
+  scaling_config {
+    desired_size = 2
+    max_size     = 200
+    min_size     = 2
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.worker_eks,
+    aws_iam_role_policy_attachment.worker_cni,
+    aws_iam_role_policy_attachment.worker_ecr,
+    aws_iam_role_policy_attachment.workers_autoscaling
+  ]
+}
+# --- ExternalDNS IRSA Resources ---
+
+# 1. IAM Policy Document for ExternalDNS
+# Defines the permissions required to modify Route 53 records.
+data "aws_iam_policy_document" "external_dns_policy" {
+  statement {
+    effect  = "Allow"
+    actions = [
+      "route53:ChangeResourceRecordSets",
+      "route53:ListResourceRecordSets",
+      "route53:ListHostedZones"
+    ]
+    # Resources must be set to "*" as ExternalDNS manages all zones it's configured for.
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "external_dns" {
+  # Variable used for naming
+  name   = "${var.cluster_name}-ExternalDNS-Policy"
+  policy = data.aws_iam_policy_document.external_dns_policy.json
+}
+
+# 2. Update the Assume Role Policy to target the ExternalDNS Service Account
+data "aws_iam_policy_document" "external_dns_assume_role_sa" {
+  statement {
+    effect  = "Allow"
+    principals {
+      # References the OIDC issuer fetched from the EKS cluster
+      identifiers = [
+        replace(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://", "")
+      ] #[aws_eks_cluster.demo.identity[0].oidc[0].issuer]
+      type        = "Federated"
+    }
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    condition {
+      test     = "StringEquals"
+      # The Service Account name for ExternalDNS will be 'external-dns'
+      variable = "${replace(aws_eks_cluster.demo.identity[0].oidc[0].issuer, "https://", "")}:sub"
+      values   = ["system:serviceaccount:external-dns:external-dns"]
+    }
+  }
+}
+
+# 3. IAM Role for ExternalDNS Service Account (Merged block with depends_on)
+resource "aws_iam_role" "external_dns" {
+  name               = "${var.cluster_name}-ExternalDNS-Role"
+  assume_role_policy = data.aws_iam_policy_document.external_dns_assume_role_sa.json
+
+  # CRITICAL: Wait for the EKS Cluster to exist and have its OIDC identity ready
+  depends_on = [
+    aws_eks_cluster.demo,
+    # data.aws_iam_openid_connect_provider.eks_oidc_provider
+  ]
+}
+
+# 4. Attach ExternalDNS Policy to Role
+resource "aws_iam_role_policy_attachment" "external_dns" {
+  role       = aws_iam_role.external_dns.name
+  policy_arn = aws_iam_policy.external_dns.arn
+}
+
+#########################################
+#  GITHUB OIDC PROVIDER (ALREADY EXISTS)
+#########################################
+
+data "aws_iam_openid_connect_provider" "github" {
+  arn = "arn:aws:iam::009593259890:oidc-provider/token.actions.githubusercontent.com"
+}
+
+#########################################
+#   IAM ROLE FOR GITHUB ACTIONS CI/CD
+#########################################
+
+resource "aws_iam_role" "github_actions" {
+  name = "github-actions-terraform-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Federated = data.aws_iam_openid_connect_provider.github.arn
+        },
+        Action = "sts:AssumeRoleWithWebIdentity",
+        Condition = {
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "GitHubActionsTerraformRole-${var.cluster_name}"
+    Environment = var.environment
+    Project     = "SecurityMesh"
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_policy" {
+  role = aws_iam_role.github_actions.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "eks:*",
+          "ec2:*",
+          "iam:*",
+          "ssm:*",
+          "sts:*",
+          "cloudformation:*",
+          "s3:*",
+          "logs:*"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+#########################################
+#       EKS CLUSTER LOOKUP (FIXED)
+#########################################
+
+data "aws_eks_cluster" "current_eks_cluster" {
+  name = aws_eks_cluster.demo.name
+}
+
+data "aws_eks_cluster_auth" "cluster_auth" {
+  name = aws_eks_cluster.demo.name
+}
+
+#########################################
+#   EKS OIDC PROVIDER LOOKUP (CORRECT)
+#########################################
+
+data "aws_iam_openid_connect_provider" "eks_oidc_provider" {
+  url = data.aws_eks_cluster.current_eks_cluster.identity[0].oidc[0].issuer
+}
+
+
+#########################################
+#          FALCO IAM POLICY
+#########################################
+
+resource "aws_iam_policy" "falco_policy" {
+  name        = "FalcoCloudWatchLogsS3Policy-${var.cluster_name}"
+  description = "IAM Policy for Falco to send alerts to CloudWatch Logs and S3"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ],
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+          "s3:AbortMultipartUpload",
+          "s3:DeleteObject"
+        ],
+        Resource = [
+          "arn:aws:s3:::your-falco-alerts-bucket-name",
+          "arn:aws:s3:::your-falco-alerts-bucket-name/*"
+        ]
+      }
+    ]
+  })
+}
+
+#########################################
+#       FALCO IRSA ROLE (EKS TRUST)
+#########################################
+
+resource "aws_iam_role" "falco_role" {
+  name_prefix = "falco-eks-role-"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Federated = data.aws_iam_openid_connect_provider.eks_oidc_provider.arn
+        },
+        Action = "sts:AssumeRoleWithWebIdentity",
+        Condition = {
+          StringEquals = {
+            "${replace(data.aws_eks_cluster.current_eks_cluster.identity[0].oidc[0].issuer, "https://", "")}:sub" = "system:serviceaccount:falco:falco"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "falco_policy_attach" {
+  role       = aws_iam_role.falco_role.name
+  policy_arn = aws_iam_policy.falco_policy.arn
+}
+
+#########################################
+#              OUTPUTS
+#########################################
+
+output "github_actions_role_arn" {
+  value = aws_iam_role.github_actions.arn
+}
+
+output "falco_irsa_role_arn" {
+  value = aws_iam_role.falco_role.arn
+}
+# infra-artifacts.tf
+
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
+resource "aws_s3_bucket" "ci_artifacts" {
+  bucket = "${var.cluster_name}-ci-artifacts-${random_id.bucket_suffix.hex}"
+
+  # ACL is deprecated and should typically be replaced with S3 object ownership controls
+  # and bucket policies for fine-grained permissions.
+  # For now, if you need a similar effect, ensure your bucket policy aligns.
+  # Removing `acl = "private"` is often necessary if you set `object_ownership = "BucketOwnerPreferred"`
+  # or `BucketOwnerEnforced` in aws_s3_bucket_ownership_controls.
+  # For simplicity and to avoid immediate errors, I'm removing it for now.
+  # Consider adding `aws_s3_bucket_ownership_controls` and `aws_s3_bucket_public_access_block`
+  # for production-grade S3 security.
+}
+
+# Use the dedicated resource for versioning
+resource "aws_s3_bucket_versioning" "ci_artifacts_versioning" {
+  bucket = aws_s3_bucket.ci_artifacts.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Use the dedicated resource for lifecycle configuration
+# infra-artifacts.tf
+resource "aws_s3_bucket_lifecycle_configuration" "ci_artifacts_lifecycle" {
+  bucket = aws_s3_bucket.ci_artifacts.id
+  rule {
+    id     = "expire-old-artifacts"
+    status = "Enabled"
+    # Added filter block
+    filter {} # This applies the rule to all objects in the bucket
+    expiration {
+      days = 365
+    }
+  }
+}
+
+
+# locals {
+  config_map_aws_auth = <<CONFIGMAPAWSAUTH
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-auth
+  namespace: kube-system
+data:
+  mapRoles: |
+    - rolearn: ${aws_iam_role.demo_node.arn}
+      username: system:node:{{EC2PrivateDNSName}}
+      groups:
+        - system:bootstrappers
+        - system:nodes
+CONFIGMAPAWSAUTH
+
+
+  kubeconfig = <<KUBECONFIG
+apiVersion: v1
+clusters:
+- cluster:
+    server: ${aws_eks_cluster.demo.endpoint}
+    certificate-authority-data: ${aws_eks_cluster.demo.certificate_authority[0].data}
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: aws
+  name: aws
+current-context: aws
+kind: Config
+preferences: {}
+users:
+- name: aws
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: aws
+      args:
+        - eks
+        - get-token
+        - --cluster-name
+        - ${var.cluster_name}
+KUBECONFIG
+}
+
+output "config_map_aws_auth" {
+  value = local.config_map_aws_auth
+}
+
+output "kubeconfig" {
+  value       = local.kubeconfig
+  sensitive = true # Recommended for kubeconfig output
+}
+
+output "subnet_public" {
+  value = aws_subnet.demo[0].map_public_ip_on_launch
+}
+
+output "eks_oidc_issuer_url" {
+  value = aws_eks_cluster.demo.identity[0].oidc[0].issuer
+}
+
+output "eks_oidc_provider_arn" {
+  value = aws_iam_openid_connect_provider.demo.arn
+}
+
+output "alb_controller_role_arn" {
+  value = aws_iam_role.alb_controller.arn
+}
+
+output "external_dns_role_arn" {
+  value = aws_iam_role.external_dns.arn
+}
+
+output "autoscaler_iam_role_arn" {
+  value = aws_iam_role.cluster_autoscaler.arn
+}
+
+output "ci_artifacts_bucket" {
+  value = aws_s3_bucket.ci_artifacts.bucket
+}
+
+# The following outputs were previously commented out in your provided outputs.tf
+# If you actually need them, ensure the corresponding resources are defined.
+# output "github_actions_user_access_key_create" {
+#    value = "Create access key in console for user ${aws_iam_user.github_actions_user.name} if you don't use OIDC"
+# }
+
+# output "github_actions_oidc_provider_arn" {
+#    value = aws_iam_openid_connect_provider.github_actions.arn
+# }#
+# Provider Configuration
+#
+
+# terraform {
+#   required_version = ">= 1.2.0"
+
+#   backend "s3" {
+#     bucket         = "prj-tf-state-dev2" # <--- EXACTLY MATCH THE BUCKET NAME CREATED ABOVE
+#     key            = "eks/terraform.tfstate"
+#     region         = "us-east-1" # <--- YOUR AWS REGION
+#     dynamodb_table = "prj-tf-locks2" # <--- EXACTLY MATCH THE DYNAMODB TABLE NAME CREATED ABOVE
+#     encrypt        = true
+#   }
+
+#   required_providers {
+#     aws = {
+#       source  = "hashicorp/aws"
+#       version = "~> 5.0"
+#     }
+#     helm = {
+#       source  = "hashicorp/helm"
+#       version = "~> 2.9"
+#     }
+#     kubernetes = {
+#       source  = "hashicorp/kubernetes"
+#       version = "~> 2.20"
+#     }
+#   }
+# }
+
+provider "aws" {
+  region = var.region
+}
+
+# Configure Helm to use the EKS cluster we create
+provider "kubernetes" {
+  host                   = aws_eks_cluster.demo.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.demo.certificate_authority[0].data)
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.demo.name]
+    command     = "aws"
+  }
+}variable "cluster_name" {
+  description = "The name of the EKS cluster"
+  type        = string
+  default     = "terraform-eks-demo" # Consistent default value
+}
+
+variable "key_pair_name" {
+  default = "ekskey"
+}
+
+variable "eks_node_instance_type" {
+  default = "m5.large"
+}
+
+variable "region" {
+  default = "us-east-1"
+}
+
+variable "github_org" {
+  default = "Consultlawal"
+}
+variable "github_repo" {
+  default = "PRJ_SC-2025_jenkins"
+}
+# variables.tf
+variable "environment" {
+  description = "The deployment environment (e.g., dev, staging, prod)"
+  type        = string
+  default     = "development" # You can provide a default value
+}data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+resource "aws_vpc" "demo" {
+  cidr_block = "10.0.0.0/16"
+
+  tags = {
+    Name                       = "terraform-eks-demo-vpc" # Changed tag name for clarity
+    "kubernetes.io/cluster/${var.cluster_name}" = "owned" # Tag for EKS cluster discovery
+  }
+}
+
+resource "aws_subnet" "demo" {
+  count = 3 # Create 3 subnets in 3 different AZs
+
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  cidr_block              = "10.0.${count.index}.0/24"
+  map_public_ip_on_launch = true # These are public subnets
+
+  vpc_id = aws_vpc.demo.id
+
+  tags = {
+    Name                       = "${var.cluster_name}-subnet-${count.index}" # Changed tag name for clarity
+    "kubernetes.io/cluster/${var.cluster_name}" = "owned" # Tag for EKS cluster discovery
+    "kubernetes.io/role/elb" = "1" # Tag for ALB to discover subnets
+    "kubernetes.io/role/internal-elb" = "1" # Tag for internal ALB to discover subnets
+  }
+}
+
+resource "aws_internet_gateway" "demo" {
+  vpc_id = aws_vpc.demo.id
+
+  tags = {
+    Name = "terraform-eks-demo-igw" # Changed tag name for clarity
+  }
+}
+
+resource "aws_route_table" "demo" {
+  vpc_id = aws_vpc.demo.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.demo.id
+  }
+
+  tags = {
+    Name = "terraform-eks-demo-rt" # Changed tag name for clarity
+  }
+}
+
+resource "aws_route_table_association" "demo" {
+  count = 3 # Associate all 3 subnets to the route table
+
+  subnet_id      = aws_subnet.demo[count.index].id
+  route_table_id = aws_route_table.demo.id
+}
