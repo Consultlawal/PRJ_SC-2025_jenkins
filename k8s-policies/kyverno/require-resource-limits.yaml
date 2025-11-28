@@ -19,6 +19,7 @@ spec:
             - trivy-system
             - istio-system
             - monitoring
+            - hipster-shop
       validate:
         message: "Containers must specify CPU and memory limits."
         pattern:
