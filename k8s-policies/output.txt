@@ -1,0 +1,422 @@
+### kyverno/disallow-latest-tag.yaml ###
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: no-latest-tag
+      match:
+        resources:
+          kinds:
+            - Pod
+            - Deployment
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "Using the 'latest' tag is not allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+
+### kyverno/disallow-privileged.yaml ###
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-privileged-containers
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - falco
+              - trivy-system
+              - istio-system
+              - monitoring
+      validate:
+        message: "Privileged containers are not allowed."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: false
+
+### kyverno/enforce-labels.yaml ###
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: enforce-labels
+spec:
+  validationFailureAction: enforce
+  rules:
+    - name: require-app-and-env-labels
+      match:
+        resources:
+          kinds:
+            - Pod
+            - Deployment
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "All resources must have 'app' and 'env' labels."
+        pattern:
+          metadata:
+            labels:
+              app: "?*"
+              env: "?*"
+
+### kyverno/label-policy.yaml ###
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: required-labels-policy
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: require-app-label
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "All pods must have the label 'app'."
+        pattern:
+          metadata:
+            labels:
+              app: "?*"
+
+    - name: require-environment-label
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "All pods must have the label 'environment'."
+        pattern:
+          metadata:
+            labels:
+              environment: "?*"
+
+### kyverno/network-policy.yaml ###
+# Default deny all ingress and egress traffic
+
+# Default deny all traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+
+# Allow Istio pod-to-pod secured mesh traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-istio-sidecar
+  namespace: default
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              istio-injection: enabled
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              istio-injection: enabled
+
+---
+
+# Allow frontend to communicate only with required Hipster Shop services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: productcatalogservice
+        - podSelector:
+            matchLabels:
+              app: cartservice
+        - podSelector:
+            matchLabels:
+              app: checkoutservice
+
+
+
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: default-deny-all
+#   namespace: default
+# spec:
+#   podSelector: {}
+#   policyTypes:
+#     - Ingress
+#     - Egress
+#   ingress: []
+#   egress: []
+
+# ---
+
+# # Allow traffic between Istio sidecars only
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-istio-sidecar
+#   namespace: default
+# spec:
+#   podSelector:
+#     matchLabels:
+#       istio-injection: enabled
+#   policyTypes:
+#     - Ingress
+#     - Egress
+#   ingress:
+#     - from:
+#         - podSelector:
+#             matchLabels:
+#               istio-injection: enabled
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               istio-injection: enabled
+
+# ---
+
+# # Allow frontend to talk to backend and cart services
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-frontend-to-services
+#   namespace: default
+# spec:
+#   podSelector:
+#     matchLabels:
+#       app: frontend
+#   policyTypes:
+#     - Egress
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               app: backend
+#       ports:
+#         - protocol: TCP
+#           port: 80
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               app: cart
+#       ports:
+#         - protocol: TCP
+#           port: 8080
+
+# ---
+
+# # Allow backend to communicate with database
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-backend-to-db
+#   namespace: default
+# spec:
+#   podSelector:
+#     matchLabels:
+#       app: backend
+#   policyTypes:
+#     - Egress
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               app: db
+#       ports:
+#         - protocol: TCP
+#           port: 5432
+
+### kyverno/pod-security.yaml ###
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pod-security-policy
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: disallow-privileged
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "Privileged containers are not allowed."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: false
+
+    - name: require-resource-limits
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "Containers must have CPU and memory limits."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+
+    - name: prevent-root-user
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "Containers must not run as root."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  runAsNonRoot: true
+
+### kyverno/require-resource-limits.yaml ###
+# k8s-policies/kyverno/require-resource-limits.yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: check-cpu-and-memory-limits
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "Containers must specify CPU and memory limits."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+### kyverno/restrict-image-registries.yaml ###
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: validate-registry
+      match:
+        resources:
+          kinds:
+            - Pod
+      exclude:
+        resources:
+          namespaces:
+            - falco
+            - trivy-system
+            - istio-system
+            - monitoring
+      validate:
+        message: "Only images from Docker Hub, GCR, or GHCR are allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "docker.io/* | gcr.io/* | ghcr.io/*"
+

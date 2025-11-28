@@ -518,6 +518,8 @@ jobs:
           kubectl label namespace hipster-shop istio-injection=enabled --overwrite
           echo "Namespace 'hipster-shop' created and Istio injection enabled."
 
+      - name: Add Kyverno PolicyException for Hipster Shop
+        run: |
           echo "Adding Kyverno exception for Hipster Shop..."
           cat <<EOF | kubectl apply -f -
           apiVersion: kyverno.io/v2
@@ -530,9 +532,21 @@ jobs:
               - policyName: enforce-labels
                 ruleNames:
                   - require-app-and-env-labels
+              - policyName: required-labels-policy
+                ruleNames:
+                  - require-environment-label
+                  - autogen-require-environment-label
+              - policyName: disallow-latest-tag
+                ruleNames:
+                  - no-latest-tag
+              - policyName: pod-security-policy
+                ruleNames:
+                  - autogen-prevent-root-user
+                  - prevent-root-user
               - policyName: restrict-image-registries
                 ruleNames:
                   - validate-registry
+                  - autogen-validate-registry
             match:
               any:
                 - resources:
@@ -542,7 +556,8 @@ jobs:
                     namespaces:
                       - hipster-shop
           EOF
-              echo "Kyverno exception applied."
+                    echo "Kyverno exception applied."
+
 
               echo "Deploying Hipster Shop application..."
               kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/release/kubernetes-manifests.yaml -n hipster-shop
